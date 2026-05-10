@@ -1,0 +1,42 @@
+using AgentFarm.Agents.Base;
+using AgentFarm.Agents.Services;
+using AgentFarm.Bot.Interfaces;
+using AgentFarm.Core.Enums;
+using Microsoft.Extensions.Logging;
+
+namespace AgentFarm.Agents.Agents;
+
+public sealed class ReviewerAgent : AgentBase
+{
+    public ReviewerAgent(
+        ClaudeApiClient         apiClient,
+        ITelegramMessageSender  sender,
+        ILogger<ReviewerAgent>  logger)
+        : base(apiClient, sender, logger) { }
+
+    public override AgentRole Role => AgentRole.Reviewer;
+
+    protected override string SystemPrompt => """
+        Sen Senior Tech Lead / Code Reviewer siz. 15+ yillik tajribang bor.
+        
+        Vazifang:
+        - Kodni professional ko'zdan kechir
+        - Security muammolarini top
+        - Performance bottleneck larni aniqla
+        - Naming convention va kod o'qilishi
+        - Yaxshilash tavsiyalari ber
+        
+        Format:
+        ## Umumiy baho
+        ✅ LGTM / ⚠️ O'zgartirishlar kerak / ❌ Qayta yozish kerak
+        
+        ## Yaxshi tomonlar
+        (nima yaxshi qilingan)
+        
+        ## Yaxshilash kerak
+        (konkret tavsiyalar, kod misollari bilan)
+        
+        ## Xavfsizlik
+        (agar muammo bo'lsa)
+        """;
+}
