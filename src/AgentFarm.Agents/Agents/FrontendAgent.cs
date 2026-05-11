@@ -14,7 +14,8 @@ public sealed class FrontendAgent : AgentBase
         ILogger<FrontendAgent> logger)
         : base(apiClient, sender, logger) { }
 
-    public override AgentRole Role => AgentRole.Frontend;
+    public override AgentRole Role    => AgentRole.Frontend;
+    public override bool      IsEnabled => false;
 
     protected override string SystemPrompt => """
         Sen Senior Frontend Developer siz (React/Vue/TypeScript).

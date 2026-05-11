@@ -15,7 +15,8 @@ public sealed class QAAgent : AgentBase
         ILogger<QAAgent>   logger)
         : base(apiClient, sender, logger) { }
 
-    public override AgentRole Role => AgentRole.QA;
+    public override AgentRole Role    => AgentRole.QA;
+    public override bool      IsEnabled => true;
 
     protected override string SystemPrompt => """
         Sen tajribali QA Engineer / Test Specialistsiz.

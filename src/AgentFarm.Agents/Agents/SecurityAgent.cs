@@ -14,7 +14,8 @@ public sealed class SecurityAgent : AgentBase
         ILogger<SecurityAgent> logger)
         : base(apiClient, sender, logger) { }
 
-    public override AgentRole Role => AgentRole.Security;
+    public override AgentRole Role    => AgentRole.Security;
+    public override bool      IsEnabled => false;
 
     protected override string SystemPrompt => """
         Sen Security Engineer siz.

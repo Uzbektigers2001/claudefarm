@@ -13,6 +13,12 @@ public class ProjectSession
     public SessionStatus Status { get; set; } = SessionStatus.Planning;
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
 
+    // SharedContext
+    public Dictionary<string, string> Files { get; set; } = new();
+    public string ArchitectPlanJson { get; set; } = string.Empty;
+    public string Requirements { get; set; } = string.Empty;
+    public List<string> BuildErrors { get; set; } = new();
+
     // Git integration
     public string? RepoName { get; set; }
     public string? BranchName { get; set; }

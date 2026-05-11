@@ -14,7 +14,8 @@ public sealed class BackendAgent : AgentBase
         ILogger<BackendAgent> logger)
         : base(apiClient, sender, logger) { }
 
-    public override AgentRole Role => AgentRole.Backend;
+    public override AgentRole Role    => AgentRole.Backend;
+    public override bool      IsEnabled => true;
 
     protected override string SystemPrompt => """
         Sen Senior Backend Developer siz (.NET/C#, ASP.NET Core).

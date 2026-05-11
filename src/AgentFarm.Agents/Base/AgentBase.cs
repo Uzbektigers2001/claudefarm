@@ -24,6 +24,8 @@ public abstract class AgentBase
     public abstract AgentRole Role { get; }
     protected abstract string SystemPrompt { get; }
 
+    public virtual bool IsEnabled => true;
+
     /// <summary>Agentga xos token chegarasi. null bo'lsa options dan oladi.</summary>
     protected virtual int? MaxTokensOverride => null;
 

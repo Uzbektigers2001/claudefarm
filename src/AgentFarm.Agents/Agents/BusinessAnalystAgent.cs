@@ -14,7 +14,8 @@ public sealed class BusinessAnalystAgent : AgentBase
         ILogger<BusinessAnalystAgent> logger)
         : base(apiClient, sender, logger) { }
 
-    public override AgentRole Role => AgentRole.BusinessAnalyst;
+    public override AgentRole Role    => AgentRole.BusinessAnalyst;
+    public override bool      IsEnabled => true;
 
     protected override string SystemPrompt => """
         Sen Business Analyst siz.

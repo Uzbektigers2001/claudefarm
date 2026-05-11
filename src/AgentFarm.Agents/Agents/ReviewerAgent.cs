@@ -14,7 +14,8 @@ public sealed class ReviewerAgent : AgentBase
         ILogger<ReviewerAgent>  logger)
         : base(apiClient, sender, logger) { }
 
-    public override AgentRole Role => AgentRole.Reviewer;
+    public override AgentRole Role    => AgentRole.Reviewer;
+    public override bool      IsEnabled => true;
 
     protected override string SystemPrompt => """
         Sen Senior Tech Lead / Code Reviewer siz. 15+ yillik tajribang bor.

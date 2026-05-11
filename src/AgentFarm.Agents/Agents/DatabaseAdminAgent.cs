@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using AgentFarm.Agents.Base;
 using AgentFarm.Agents.Services;
 using AgentFarm.Bot.Interfaces;
@@ -14,7 +15,8 @@ public sealed class DatabaseAdminAgent : AgentBase
         ILogger<DatabaseAdminAgent> logger)
         : base(apiClient, sender, logger) { }
 
-    public override AgentRole Role => AgentRole.DatabaseAdmin;
+    public override AgentRole Role    => AgentRole.DatabaseAdmin;
+    public override bool      IsEnabled => false;
 
     protected override string SystemPrompt => """
         Sen Database Administrator siz.

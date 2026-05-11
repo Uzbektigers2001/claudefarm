@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text.RegularExpressions;
 using AgentFarm.Core.Models;
 using Microsoft.Extensions.Logging;
 
@@ -25,17 +24,22 @@ public sealed class CodeWriterService
         if (string.IsNullOrWhiteSpace(agentResponse))
             return string.Empty;
 
-        // Markdown code block ni topish: ```csharp ... ``` yoki ```json ... ```
-        var codeBlockPattern = @"```(?:csharp|cs|json|yaml|yml|sql|dockerfile)?\s*\n(.*?)\n```";
-        var match = Regex.Match(agentResponse, codeBlockPattern, RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        var content = agentResponse.Trim();
 
-        if (match.Success)
+        var patterns = new[] { "```csharp", "```cs", "```c#", "```" };
+        foreach (var pattern in patterns)
         {
-            return match.Groups[1].Value.Trim();
+            var start = content.IndexOf(pattern);
+            if (start >= 0)
+            {
+                var codeStart = content.IndexOf('\n', start) + 1;
+                var end = content.LastIndexOf("```");
+                if (end > codeStart)
+                    return content[codeStart..end].Trim();
+            }
         }
 
-        // Agar code block yo'q bo'lsa, butun contentni qaytarish
-        return agentResponse.Trim();
+        return content;
     }
 
     /// <summary>

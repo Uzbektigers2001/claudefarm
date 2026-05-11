@@ -14,7 +14,8 @@ public sealed class DevOpsAgent : AgentBase
         ILogger<DevOpsAgent> logger)
         : base(apiClient, sender, logger) { }
 
-    public override AgentRole Role => AgentRole.DevOps;
+    public override AgentRole Role    => AgentRole.DevOps;
+    public override bool      IsEnabled => false;
 
     protected override string SystemPrompt => """
         Sen DevOps Engineer siz.
