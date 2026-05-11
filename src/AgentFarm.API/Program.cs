@@ -27,13 +27,40 @@ builder.Services.AddHttpClient<ClaudeApiClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(120);
 });
 
+// --- Session Store ---
+builder.Services.AddSingleton<InMemorySessionStore>();
+
 // --- Agentlar ---
-builder.Services.AddSingleton<DeveloperAgent>();
+builder.Services.AddSingleton<OrchestratorAgent>();
+
+// Developer agentlar - 3 ta alohida instance
+builder.Services.AddTransient<DeveloperAgent>(sp =>
+    new DeveloperAgent(
+        sp.GetRequiredService<ClaudeApiClient>(),
+        sp.GetRequiredService<ITelegramMessageSender>(),
+        sp.GetRequiredService<ILogger<DeveloperAgent>>()
+    ));
+
 builder.Services.AddSingleton<QAAgent>();
 builder.Services.AddSingleton<ReviewerAgent>();
 
-// --- Pipeline ---
-builder.Services.AddSingleton<IAgentPipelineRunner, AgentPipelineRunner>();
+// --- Pipeline (Orchestrator arxitekturasi) ---
+builder.Services.AddSingleton<IAgentPipelineRunner>(sp =>
+{
+    var orchestrator = sp.GetRequiredService<OrchestratorAgent>();
+    var developer1   = sp.GetRequiredService<DeveloperAgent>();
+    var developer2   = sp.GetRequiredService<DeveloperAgent>();
+    var developer3   = sp.GetRequiredService<DeveloperAgent>();
+    var qa           = sp.GetRequiredService<QAAgent>();
+    var reviewer     = sp.GetRequiredService<ReviewerAgent>();
+    var sessionStore = sp.GetRequiredService<InMemorySessionStore>();
+    var sender       = sp.GetRequiredService<ITelegramMessageSender>();
+    var logger       = sp.GetRequiredService<ILogger<OrchestratorPipelineRunner>>();
+
+    return new OrchestratorPipelineRunner(
+        orchestrator, developer1, developer2, developer3,
+        qa, reviewer, sessionStore, sender, logger);
+});
 
 // --- HTTP ---
 builder.Services.AddControllers();
