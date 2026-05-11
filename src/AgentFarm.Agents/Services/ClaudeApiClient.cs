@@ -59,10 +59,12 @@ public sealed class ClaudeApiClient
     {
         var url = _options.BaseUrl.TrimEnd('/') + "/chat/completions";
 
+        // stream: false — streaming o'chirilgan, to'liq JSON javob kutamiz
         var body = new
         {
             model      = _options.Model,
             max_tokens = _options.MaxTokens,
+            stream     = false,
             messages   = new[]
             {
                 new { role = "system", content = systemPrompt },
@@ -106,6 +108,7 @@ public sealed class ClaudeApiClient
         {
             model      = _options.Model,
             max_tokens = _options.MaxTokens,
+            stream     = false,
             system     = systemPrompt,
             messages   = new[]
             {
