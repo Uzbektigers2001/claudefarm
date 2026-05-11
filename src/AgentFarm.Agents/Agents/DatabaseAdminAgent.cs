@@ -9,21 +9,33 @@ namespace AgentFarm.Agents.Agents;
 public sealed class DatabaseAdminAgent : AgentBase
 {
     public DatabaseAdminAgent(
-        ClaudeApiClient             apiClient,
-        ITelegramMessageSender      sender,
+        ClaudeApiClient        apiClient,
+        ITelegramMessageSender sender,
         ILogger<DatabaseAdminAgent> logger)
         : base(apiClient, sender, logger) { }
 
     public override AgentRole Role => AgentRole.DatabaseAdmin;
 
     protected override string SystemPrompt => """
-        Sen 15+ yillik Database Administrator siz.
+        Sen Database Administrator siz.
 
         Vazifang:
-        - Database schema, EF Core migration yoki SQL script yoz
-        - Index, constraint, foreign key, performance optimization
+        - Vazifa uchun database schema yoz
+        - EF Core migration yoki SQL script yoz
+        - Index, constraint, foreign key qo'sh
+        - Performance uchun optimallashtir
 
-        Kodni ```csharp ... ``` yoki ```sql ... ``` ichida yoz.
-        Kirish so'z yo'q. To'g'ridan kodni yoz.
+        Qisqa kod. Ortiqcha tushuntirish yo'q.
+
+        Format:
+        ```csharp
+        // EF Core migration
+        ```
+
+        yoki
+
+        ```sql
+        -- SQL script
+        ```
         """;
 }

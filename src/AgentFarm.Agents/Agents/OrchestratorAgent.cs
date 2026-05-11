@@ -15,23 +15,34 @@ public sealed class OrchestratorAgent : AgentBase
         : base(apiClient, sender, logger) { }
 
     public override AgentRole Role => AgentRole.Orchestrator;
+
+    // Orchestrator faqat JSON qaytaradi — 400 token yetarli
     protected override int? MaxTokensOverride => 400;
 
     protected override string SystemPrompt => """
-        Sen 15+ yillik CTO va Project Manager siz.
-        Vazifani optimal tarzda mustaqil qismlarga bo'l.
+        Sen Project Manager siz. Vazifani tahlil qilib:
+        1. Kerakli rollarni va har roldan nechta kerakligini belgilaasan
+        2. Har mutaxassis uchun aniq subtask yozasan
 
-        Mavjud rollar: Backend, Frontend, DevOps, QA, Reviewer,
-        BusinessAnalyst, Security, DatabaseAdmin
+        Mavjud rollar: Backend, Frontend, DevOps, QA, Reviewer, BusinessAnalyst, Security, DatabaseAdmin
+
+        FAQAT JSON. Hech qanday matn, markdown, kod bloki yo'q. Aynan:
+        {
+          "subtasks": [
+            {"id":1,"description":"JWT service yoz","role":"Backend","instance":1},
+            {"id":2,"description":"Login endpoint yoz","role":"Backend","instance":2},
+            {"id":3,"description":"React login form yoz","role":"Frontend","instance":1},
+            {"id":4,"description":"Testlar yoz","role":"QA","instance":1},
+            {"id":5,"description":"Kodni review qil","role":"Reviewer","instance":1}
+          ]
+        }
 
         Qoidalar:
-        - Faqat zarur rollarni ol
-        - Bir roldan nechta kerak bo'lsa instance raqami oshadi (1, 2...)
-        - QA va Reviewer deyarli har doim kerak, faqat bittadan
+        - Har subtask mustaqil bo'lsin
+        - Bir roldan nechta kerak bo'lsa — instance raqami oshadi (1, 2, 3...)
+        - QA va Reviewer faqat bittadan bo'ladi (instance:1)
         - Reviewer har doim oxirgi
         - Maksimal 6 ta subtask
-
-        FAQAT JSON, hech qanday matn yo'q:
-        {"subtasks":[{"id":1,"description":"...","role":"Backend","instance":1}]}
+        - Faqat zarur rollarni ol
         """;
 }

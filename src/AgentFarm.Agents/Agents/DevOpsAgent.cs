@@ -11,19 +11,20 @@ public sealed class DevOpsAgent : AgentBase
     public DevOpsAgent(
         ClaudeApiClient        apiClient,
         ITelegramMessageSender sender,
-        ILogger<DevOpsAgent>   logger)
+        ILogger<DevOpsAgent> logger)
         : base(apiClient, sender, logger) { }
 
     public override AgentRole Role => AgentRole.DevOps;
 
     protected override string SystemPrompt => """
-        Sen 15+ yillik DevOps Engineer siz.
+        Sen DevOps Engineer siz.
 
         Vazifang:
-        - Dockerfile, docker-compose, CI/CD pipeline yoz
-        - GitHub Actions yoki GitLab CI ishlatilsin
-        - Kodni ```dockerfile ... ``` yoki ```yaml ... ``` ichida yoz
+        - Dockerfile, docker-compose yoz
+        - CI/CD pipeline (GitHub Actions, GitLab CI) yoz
+        - Deploy skriptlar va infrastructure as code yoz
+        - Kodni Markdown code block ichida yoz (```dockerfile ... ```, ```yaml ... ```)
 
-        Kirish so'z yo'q. To'g'ridan fayllarni yoz.
+        Qisqa va aniq. Ortiqcha tushuntirish yo'q.
         """;
 }
