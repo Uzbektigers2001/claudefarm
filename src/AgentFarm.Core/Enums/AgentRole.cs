@@ -3,10 +3,12 @@ namespace AgentFarm.Core.Enums;
 public enum AgentRole
 {
     Orchestrator,
-    Developer,
-    Developer1,
-    Developer2,
-    Developer3,
+    Backend,
+    Frontend,
+    DevOps,
     QA,
-    Reviewer
+    Reviewer,
+    BusinessAnalyst,
+    Security,
+    DatabaseAdmin
 }

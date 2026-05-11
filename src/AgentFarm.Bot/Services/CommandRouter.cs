@@ -44,11 +44,11 @@ public sealed class CommandRouter
             {
                 ChatId         = chatId,
                 Prompt         = prompt,
-                RequestedRoles = [AgentRole.Developer, AgentRole.QA, AgentRole.Reviewer]
+                RequestedRoles = [AgentRole.Backend, AgentRole.QA, AgentRole.Reviewer]
             };
         }
 
-        // /dev <vazifa> — faqat developer
+        // /dev <vazifa> — faqat backend developer
         if (text.StartsWith("/dev ", StringComparison.OrdinalIgnoreCase))
         {
             var prompt = text["/dev ".Length..].Trim();
@@ -56,7 +56,7 @@ public sealed class CommandRouter
             {
                 ChatId         = chatId,
                 Prompt         = prompt,
-                RequestedRoles = [AgentRole.Developer]
+                RequestedRoles = [AgentRole.Backend]
             };
         }
 

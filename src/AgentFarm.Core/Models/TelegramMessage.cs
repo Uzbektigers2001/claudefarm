@@ -23,10 +23,15 @@ public class TelegramMessage
 
     private static string RoleLabel(AgentRole role) => role switch
     {
-        AgentRole.Developer  => "Developer",
-        AgentRole.QA         => "QA",
-        AgentRole.Reviewer   => "Reviewer",
-        AgentRole.Orchestrator => "AgentFarm",
-        _                    => role.ToString()
+        AgentRole.Backend         => "Backend",
+        AgentRole.Frontend        => "Frontend",
+        AgentRole.DevOps          => "DevOps",
+        AgentRole.QA              => "QA",
+        AgentRole.Reviewer        => "Reviewer",
+        AgentRole.BusinessAnalyst => "Business Analyst",
+        AgentRole.Security        => "Security",
+        AgentRole.DatabaseAdmin   => "Database Admin",
+        AgentRole.Orchestrator    => "AgentFarm",
+        _                         => role.ToString()
     };
 }

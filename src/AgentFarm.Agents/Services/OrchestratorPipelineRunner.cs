@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using AgentFarm.Agents.Agents;
+using AgentFarm.Agents.Base;
 using AgentFarm.Bot.Interfaces;
 using AgentFarm.Bot.Services;
 using AgentFarm.Core.Enums;
@@ -11,44 +12,53 @@ using Microsoft.Extensions.Logging;
 namespace AgentFarm.Agents.Services;
 
 /// <summary>
-/// Orchestrator arxitekturasi:
-/// 1. Orchestrator vazifani bo'ladi
-/// 2. Parallel: Developer1, Developer2, Developer3 ishlaydi
+/// Orchestrator arxitekturasi (dynamic role selection):
+/// 1. Orchestrator vazifani tahlil qilib kerakli rollarni tanlaydi
+/// 2. Parallel: Backend/Frontend/DevOps/BusinessAnalyst/Security/DatabaseAdmin ishlaydi
 /// 3. QA barcha developer kodlarini ko'radi
-/// 4. Reviewer barcha natijalarni ko'radi
+/// 4. Reviewer barcha natijalarni ko'radi (har doim oxirgi)
 /// </summary>
 public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
 {
-    private readonly OrchestratorAgent                 _orchestrator;
-    private readonly DeveloperAgent                    _developer1;
-    private readonly DeveloperAgent                    _developer2;
-    private readonly DeveloperAgent                    _developer3;
-    private readonly QAAgent                           _qa;
-    private readonly ReviewerAgent                     _reviewer;
-    private readonly InMemorySessionStore              _sessionStore;
-    private readonly ITelegramMessageSender            _sender;
+    private readonly OrchestratorAgent                   _orchestrator;
+    private readonly BackendAgent                        _backend;
+    private readonly FrontendAgent                       _frontend;
+    private readonly DevOpsAgent                         _devops;
+    private readonly BusinessAnalystAgent                _businessAnalyst;
+    private readonly SecurityAgent                       _security;
+    private readonly DatabaseAdminAgent                  _databaseAdmin;
+    private readonly QAAgent                             _qa;
+    private readonly ReviewerAgent                       _reviewer;
+    private readonly InMemorySessionStore                _sessionStore;
+    private readonly ITelegramMessageSender              _sender;
     private readonly ILogger<OrchestratorPipelineRunner> _logger;
 
     public OrchestratorPipelineRunner(
-        OrchestratorAgent orchestrator,
-        DeveloperAgent    developer1,
-        DeveloperAgent    developer2,
-        DeveloperAgent    developer3,
-        QAAgent           qa,
-        ReviewerAgent     reviewer,
-        InMemorySessionStore sessionStore,
+        OrchestratorAgent     orchestrator,
+        BackendAgent          backend,
+        FrontendAgent         frontend,
+        DevOpsAgent           devops,
+        BusinessAnalystAgent  businessAnalyst,
+        SecurityAgent         security,
+        DatabaseAdminAgent    databaseAdmin,
+        QAAgent               qa,
+        ReviewerAgent         reviewer,
+        InMemorySessionStore  sessionStore,
         ITelegramMessageSender sender,
         ILogger<OrchestratorPipelineRunner> logger)
     {
-        _orchestrator  = orchestrator;
-        _developer1    = developer1;
-        _developer2    = developer2;
-        _developer3    = developer3;
-        _qa            = qa;
-        _reviewer      = reviewer;
-        _sessionStore  = sessionStore;
-        _sender        = sender;
-        _logger        = logger;
+        _orchestrator      = orchestrator;
+        _backend           = backend;
+        _frontend          = frontend;
+        _devops            = devops;
+        _businessAnalyst   = businessAnalyst;
+        _security          = security;
+        _databaseAdmin     = databaseAdmin;
+        _qa                = qa;
+        _reviewer          = reviewer;
+        _sessionStore      = sessionStore;
+        _sender            = sender;
+        _logger            = logger;
     }
 
     public async Task<PipelineResult> RunAsync(AgentRequest request, CancellationToken ct = default)
@@ -101,45 +111,57 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
             await _sender.SendTextAsync(request.ChatId,
                 $"📋 Vazifa {subtasks.Count} qismga bo'lindi:\n" +
                 string.Join("\n", subtasks.Select((st, i) =>
-                    $"{i + 1}. [{st.AssignedTo}] {st.Description.Substring(0, Math.Min(50, st.Description.Length))}...")),
+                    $"{i + 1}. [{st.DisplayName}] {st.Description.Substring(0, Math.Min(50, st.Description.Length))}...")),
                 useMarkdown: false, ct);
 
-            // 2️⃣ Parallel: Developer1, Developer2, Developer3
+            // 2️⃣ Parallel: Barcha rollar parallel ishlaydi (QA va Reviewer bundan mustasno)
             session.Status = SessionStatus.Developing;
             _sessionStore.UpdateSession(session);
 
-            var developerTasks = subtasks.Select(async subtask =>
-            {
-                var agent = GetDeveloperAgent(subtask.AssignedTo);
-                var subRequest = CreateSubRequest(request, subtask);
-
-                subtask.Status = SubTaskStatus.InProgress;
-                _sessionStore.UpdateSession(session);
-
-                var response = await agent.RunAsync(subRequest, previousContext: null, ct);
-
-                if (response.Status == AgentStatus.Completed)
+            var developmentTasks = subtasks
+                .Where(st => st.AssignedTo != AgentRole.QA && st.AssignedTo != AgentRole.Reviewer)
+                .Select(async subtask =>
                 {
-                    subtask.Code = response.Content;
-                    subtask.Status = SubTaskStatus.Done;
+                    var agent = GetAgentForRole(subtask.AssignedTo);
+                    if (agent == null)
+                    {
+                        _logger.LogWarning("Agent topilmadi: {Role}", subtask.AssignedTo);
+                        subtask.Status = SubTaskStatus.Failed;
+                        return null;
+                    }
 
-                    // Telegram ga darhol xabar
-                    await _sender.SendTextAsync(request.ChatId,
-                        $"✅ [{subtask.AssignedTo}] vazifani tugatdi", useMarkdown: false, ct);
-                }
-                else
-                {
-                    subtask.Status = SubTaskStatus.Failed;
-                    await _sender.SendTextAsync(request.ChatId,
-                        $"❌ [{subtask.AssignedTo}] xato", useMarkdown: false, ct);
-                }
+                    var subRequest = CreateSubRequest(request, subtask);
 
-                _sessionStore.UpdateSession(session);
-                return response;
-            }).ToList();
+                    subtask.Status = SubTaskStatus.InProgress;
+                    _sessionStore.UpdateSession(session);
 
-            var developerResponses = await Task.WhenAll(developerTasks);
-            responses.AddRange(developerResponses);
+                    var response = await agent.RunAsync(subRequest, previousContext: null, ct);
+
+                    if (response.Status == AgentStatus.Completed)
+                    {
+                        subtask.Code = response.Content;
+                        subtask.Status = SubTaskStatus.Done;
+
+                        // Telegram ga darhol xabar
+                        await _sender.SendTextAsync(request.ChatId,
+                            $"✅ [{subtask.DisplayName}] vazifani tugatdi", useMarkdown: false, ct);
+                    }
+                    else
+                    {
+                        subtask.Status = SubTaskStatus.Failed;
+                        await _sender.SendTextAsync(request.ChatId,
+                            $"❌ [{subtask.DisplayName}] xato", useMarkdown: false, ct);
+                    }
+
+                    _sessionStore.UpdateSession(session);
+                    return response;
+                }).ToList();
+
+            var developmentResponses = (await Task.WhenAll(developmentTasks))
+                .Where(r => r != null)
+                .Cast<AgentResponse>()
+                .ToList();
+            responses.AddRange(developmentResponses);
 
             // 3️⃣ QA - barcha developer kodlarini ko'radi
             session.Status = SessionStatus.QA;
@@ -220,18 +242,18 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
                 var result = new List<SubTask>();
                 foreach (var item in subtasksArray.EnumerateArray())
                 {
-                    var developerName = item.GetProperty("developer").GetString() ?? "Developer1";
-                    var role = developerName switch
+                    var roleName = item.GetProperty("role").GetString() ?? "Backend";
+                    var role = ParseAgentRole(roleName);
+                    var instance = 1;
+                    if (item.TryGetProperty("instance", out var instanceElement))
                     {
-                        "Developer1" => AgentRole.Developer1,
-                        "Developer2" => AgentRole.Developer2,
-                        "Developer3" => AgentRole.Developer3,
-                        _ => AgentRole.Developer1
-                    };
+                        instance = instanceElement.GetInt32();
+                    }
 
                     result.Add(new SubTask
                     {
                         AssignedTo = role,
+                        Instance = instance,
                         Description = item.GetProperty("description").GetString() ?? "",
                         Status = SubTaskStatus.Pending
                     });
@@ -255,22 +277,43 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
             }
         }
 
-        // Fallback: 3 ta teng subtask
+        // Fallback: Backend + QA + Reviewer
         _logger.LogWarning("JSON parse muvaffaqiyatsiz, fallback subtasklar yaratildi");
         return new List<SubTask>
         {
-            new() { AssignedTo = AgentRole.Developer1, Description = $"{request.Prompt} — 1-qism", Status = SubTaskStatus.Pending },
-            new() { AssignedTo = AgentRole.Developer2, Description = $"{request.Prompt} — 2-qism", Status = SubTaskStatus.Pending },
-            new() { AssignedTo = AgentRole.Developer3, Description = $"{request.Prompt} — 3-qism", Status = SubTaskStatus.Pending }
+            new() { AssignedTo = AgentRole.Backend, Instance = 1, Description = request.Prompt, Status = SubTaskStatus.Pending },
+            new() { AssignedTo = AgentRole.QA, Instance = 1, Description = "Kodni test qilish", Status = SubTaskStatus.Pending },
+            new() { AssignedTo = AgentRole.Reviewer, Instance = 1, Description = "Kodni review qilish", Status = SubTaskStatus.Pending }
         };
     }
 
-    private DeveloperAgent GetDeveloperAgent(AgentRole role) => role switch
+    private static AgentRole ParseAgentRole(string roleName)
     {
-        AgentRole.Developer1 => _developer1,
-        AgentRole.Developer2 => _developer2,
-        AgentRole.Developer3 => _developer3,
-        _ => _developer1
+        return roleName switch
+        {
+            "Backend" => AgentRole.Backend,
+            "Frontend" => AgentRole.Frontend,
+            "DevOps" => AgentRole.DevOps,
+            "QA" => AgentRole.QA,
+            "Reviewer" => AgentRole.Reviewer,
+            "BusinessAnalyst" => AgentRole.BusinessAnalyst,
+            "Security" => AgentRole.Security,
+            "DatabaseAdmin" => AgentRole.DatabaseAdmin,
+            _ => AgentRole.Backend
+        };
+    }
+
+    private AgentBase? GetAgentForRole(AgentRole role) => role switch
+    {
+        AgentRole.Backend => _backend,
+        AgentRole.Frontend => _frontend,
+        AgentRole.DevOps => _devops,
+        AgentRole.QA => _qa,
+        AgentRole.Reviewer => _reviewer,
+        AgentRole.BusinessAnalyst => _businessAnalyst,
+        AgentRole.Security => _security,
+        AgentRole.DatabaseAdmin => _databaseAdmin,
+        _ => null
     };
 
     private static AgentRequest CreateSubRequest(AgentRequest original, SubTask subtask)
@@ -294,7 +337,7 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
         {
             if (subtask.Status == SubTaskStatus.Done && !string.IsNullOrWhiteSpace(subtask.Code))
             {
-                sb.AppendLine($"### [{subtask.AssignedTo}] {subtask.Description}");
+                sb.AppendLine($"### [{subtask.DisplayName}] {subtask.Description}");
                 sb.AppendLine(subtask.Code);
                 sb.AppendLine();
             }

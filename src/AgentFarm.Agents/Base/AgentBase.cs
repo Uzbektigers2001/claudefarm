@@ -122,11 +122,16 @@ public abstract class AgentBase
 
     private string RoleLabel => Role switch
     {
-        AgentRole.Developer    => "Developer",
-        AgentRole.QA           => "QA",
-        AgentRole.Reviewer     => "Reviewer",
-        AgentRole.Orchestrator => "Orchestrator",
-        _                      => Role.ToString()
+        AgentRole.Backend         => "Backend",
+        AgentRole.Frontend        => "Frontend",
+        AgentRole.DevOps          => "DevOps",
+        AgentRole.QA              => "QA",
+        AgentRole.Reviewer        => "Reviewer",
+        AgentRole.BusinessAnalyst => "Business Analyst",
+        AgentRole.Security        => "Security",
+        AgentRole.DatabaseAdmin   => "Database Admin",
+        AgentRole.Orchestrator    => "Orchestrator",
+        _                         => Role.ToString()
     };
 
     public static string EscapeMd(string text) =>

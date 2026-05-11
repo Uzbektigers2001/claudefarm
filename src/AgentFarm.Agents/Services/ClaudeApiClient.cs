@@ -64,7 +64,7 @@ public sealed class ClaudeApiClient
         var body = new
         {
             model      = _options.Model,
-            max_tokens = maxTokens ?? _options.MaxTokens,
+            max_tokens = _options.MaxTokens,
             stream     = false,
             messages   = new[]
             {
@@ -108,7 +108,7 @@ public sealed class ClaudeApiClient
         var body = new
         {
             model      = _options.Model,
-            max_tokens = maxTokens ?? _options.MaxTokens,
+            max_tokens = _options.MaxTokens,
             stream     = false,
             system     = systemPrompt,
             messages   = new[]

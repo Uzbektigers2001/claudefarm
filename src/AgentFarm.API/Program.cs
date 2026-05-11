@@ -30,36 +30,36 @@ builder.Services.AddHttpClient<ClaudeApiClient>(client =>
 // --- Session Store ---
 builder.Services.AddSingleton<InMemorySessionStore>();
 
-// --- Agentlar ---
+// --- Agentlar (Dynamic Role Selection) ---
 builder.Services.AddSingleton<OrchestratorAgent>();
-
-// Developer agentlar - 3 ta alohida instance
-builder.Services.AddTransient<DeveloperAgent>(sp =>
-    new DeveloperAgent(
-        sp.GetRequiredService<ClaudeApiClient>(),
-        sp.GetRequiredService<ITelegramMessageSender>(),
-        sp.GetRequiredService<ILogger<DeveloperAgent>>()
-    ));
-
+builder.Services.AddSingleton<BackendAgent>();
+builder.Services.AddSingleton<FrontendAgent>();
+builder.Services.AddSingleton<DevOpsAgent>();
+builder.Services.AddSingleton<BusinessAnalystAgent>();
+builder.Services.AddSingleton<SecurityAgent>();
+builder.Services.AddSingleton<DatabaseAdminAgent>();
 builder.Services.AddSingleton<QAAgent>();
 builder.Services.AddSingleton<ReviewerAgent>();
 
 // --- Pipeline (Orchestrator arxitekturasi) ---
 builder.Services.AddSingleton<IAgentPipelineRunner>(sp =>
 {
-    var orchestrator = sp.GetRequiredService<OrchestratorAgent>();
-    var developer1   = sp.GetRequiredService<DeveloperAgent>();
-    var developer2   = sp.GetRequiredService<DeveloperAgent>();
-    var developer3   = sp.GetRequiredService<DeveloperAgent>();
-    var qa           = sp.GetRequiredService<QAAgent>();
-    var reviewer     = sp.GetRequiredService<ReviewerAgent>();
-    var sessionStore = sp.GetRequiredService<InMemorySessionStore>();
-    var sender       = sp.GetRequiredService<ITelegramMessageSender>();
-    var logger       = sp.GetRequiredService<ILogger<OrchestratorPipelineRunner>>();
+    var orchestrator     = sp.GetRequiredService<OrchestratorAgent>();
+    var backend          = sp.GetRequiredService<BackendAgent>();
+    var frontend         = sp.GetRequiredService<FrontendAgent>();
+    var devops           = sp.GetRequiredService<DevOpsAgent>();
+    var businessAnalyst  = sp.GetRequiredService<BusinessAnalystAgent>();
+    var security         = sp.GetRequiredService<SecurityAgent>();
+    var databaseAdmin    = sp.GetRequiredService<DatabaseAdminAgent>();
+    var qa               = sp.GetRequiredService<QAAgent>();
+    var reviewer         = sp.GetRequiredService<ReviewerAgent>();
+    var sessionStore     = sp.GetRequiredService<InMemorySessionStore>();
+    var sender           = sp.GetRequiredService<ITelegramMessageSender>();
+    var logger           = sp.GetRequiredService<ILogger<OrchestratorPipelineRunner>>();
 
     return new OrchestratorPipelineRunner(
-        orchestrator, developer1, developer2, developer3,
-        qa, reviewer, sessionStore, sender, logger);
+        orchestrator, backend, frontend, devops, businessAnalyst,
+        security, databaseAdmin, qa, reviewer, sessionStore, sender, logger);
 });
 
 // --- HTTP ---

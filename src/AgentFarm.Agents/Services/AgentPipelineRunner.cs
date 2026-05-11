@@ -9,24 +9,24 @@ using System.Diagnostics;
 namespace AgentFarm.Agents.Services;
 
 /// <summary>
-/// Sequential pipeline: Developer → QA (Developer kodini ko'radi) → Reviewer (ikkalasini ko'radi).
+/// Sequential pipeline: Backend → QA (Backend kodini ko'radi) → Reviewer (ikkalasini ko'radi).
 /// </summary>
 public sealed class AgentPipelineRunner : IAgentPipelineRunner
 {
-    private readonly DeveloperAgent              _developer;
+    private readonly BackendAgent                _backend;
     private readonly QAAgent                     _qa;
     private readonly ReviewerAgent               _reviewer;
     private readonly ITelegramMessageSender      _sender;
     private readonly ILogger<AgentPipelineRunner> _logger;
 
     public AgentPipelineRunner(
-        DeveloperAgent               developer,
+        BackendAgent                 backend,
         QAAgent                      qa,
         ReviewerAgent                reviewer,
         ITelegramMessageSender       sender,
         ILogger<AgentPipelineRunner> logger)
     {
-        _developer = developer;
+        _backend   = backend;
         _qa        = qa;
         _reviewer  = reviewer;
         _sender    = sender;
@@ -41,11 +41,11 @@ public sealed class AgentPipelineRunner : IAgentPipelineRunner
         _logger.LogInformation("Pipeline boshlandi. TaskId={TaskId}, Rollar={Roles}",
             request.TaskId, string.Join(", ", request.RequestedRoles));
 
-        // 1. Developer
+        // 1. Backend Developer
         string? devCode = null;
-        if (request.RequestedRoles.Contains(AgentRole.Developer))
+        if (request.RequestedRoles.Contains(AgentRole.Backend))
         {
-            var devResponse = await _developer.RunAsync(request, previousContext: null, ct);
+            var devResponse = await _backend.RunAsync(request, previousContext: null, ct);
             responses.Add(devResponse);
             if (devResponse.Status == AgentStatus.Completed)
                 devCode = devResponse.Content;

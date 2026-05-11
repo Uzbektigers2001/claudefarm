@@ -18,7 +18,7 @@ public class AgentRequest
 
     /// <summary>Qaysi agentlar ishlashi kerak.</summary>
     public IReadOnlyList<AgentRole> RequestedRoles { get; init; } =
-        [AgentRole.Developer, AgentRole.QA, AgentRole.Reviewer];
+        [AgentRole.Backend, AgentRole.QA, AgentRole.Reviewer];
 
     /// <summary>Qo'shimcha kontekst (oldingi kod, eslatmalar va h.k.).</summary>
     public string? Context { get; init; }
