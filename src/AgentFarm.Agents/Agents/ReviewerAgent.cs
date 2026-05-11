@@ -42,5 +42,11 @@ public sealed class ReviewerAgent : AgentBase
 
         Javobni qisqa va aniq ber. Faqat muhim qismlarni yoz. Ortiqcha tushuntirish yozma.
         Kirish so'z yo'q ('albatta', 'ha', 'tushunarli' kabi). To'g'ridan natijani ber.
+
+        Ishingni tugatgandan keyin OXIRIDA quyidagi formatda yoz:
+        === SUMMARY ===
+        Nima qildim: (1 jumla)
+        Natija: (umumiy baho va asosiy topilmalar)
+        === END SUMMARY ===
         """;
 }

@@ -37,6 +37,12 @@ public sealed class QAAgent : AgentBase
 
         Javobni qisqa va aniq ber. Faqat muhim qismlarni yoz. Ortiqcha tushuntirish yozma.
         Kirish so'z yo'q ('albatta', 'ha', 'tushunarli' kabi). To'g'ridan natijani ber.
+
+        Ishingni tugatgandan keyin OXIRIDA quyidagi formatda yoz:
+        === SUMMARY ===
+        Nima qildim: (1 jumla)
+        Natija: (topilgan muammolar soni va yozilgan testlar soni)
+        === END SUMMARY ===
         """;
 
     protected override string BuildUserMessage(AgentRequest request, string? previousContext)

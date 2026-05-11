@@ -42,5 +42,11 @@ public sealed class AnalystAgent : AgentBase
         - Cheklovlar: ...
 
         Aniq va texnik. Ortiqcha matn yo'q.
+
+        Ishingni tugatgandan keyin OXIRIDA quyidagi formatda yoz:
+        === SUMMARY ===
+        Nima qildim: (1 jumla)
+        Natija: (asosiy topilmalar yoki talablar soni)
+        === END SUMMARY ===
         """;
 }

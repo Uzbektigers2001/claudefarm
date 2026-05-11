@@ -31,5 +31,11 @@ public sealed class BackendAgent : AgentBase
         Faqat kod va qisqa tushuntirish yoz. Keraksiz gaplar yo'q.
 
         Javobni qisqa va aniq ber. Faqat muhim qismlarni yoz. Ortiqcha tushuntirish yozma.
+
+        Ishingni tugatgandan keyin OXIRIDA quyidagi formatda yoz:
+        === SUMMARY ===
+        Nima qildim: (1 jumla)
+        Natija: (yozilgan fayl nomi va asosiy sinf/method)
+        === END SUMMARY ===
         """;
 }

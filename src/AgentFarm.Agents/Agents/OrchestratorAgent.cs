@@ -33,7 +33,9 @@ public sealed class OrchestratorAgent : AgentBase
             var (content, tokens) = await ApiClient.CompleteAsync(SystemPrompt, userMessage, MaxTokensOverride, jsonMode: false, ct);
             sw.Stop();
 
-            // Orchestrator natijasi foydalanuvchiga ko'rsatilmaydi (Telegram xabar YO'Q)
+            var summary = ExtractSummary(content);
+            if (summary != null)
+                await Sender.SendTextAsync(request.ChatId, $"[Orchestrator] {summary}", useMarkdown: false, ct);
             return AgentResponse.Success(request.TaskId, Role, content, tokens, sw.Elapsed);
         }
         catch (Exception ex)
@@ -152,6 +154,12 @@ public sealed class OrchestratorAgent : AgentBase
         - Har subtask aniq va mustaqil bo'lsin
         - Boshqa agent ishiga bog'liq bo'lmasin
         - Description formati to'g'ri bo'lsin
+
+        JSON dan KEYIN (JSON tugagandan so'ng, alohida blokda) quyidagi formatda yoz:
+        === SUMMARY ===
+        Nima qildim: (1 jumla)
+        Natija: (agent soni va rollar ro'yxati)
+        === END SUMMARY ===
 
         FAQAT JSON. Hech qanday matn, markdown, kod bloki yo'q. Aynan:
         {"subtasks":[

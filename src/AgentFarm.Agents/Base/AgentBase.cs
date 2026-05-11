@@ -41,7 +41,9 @@ public abstract class AgentBase
             var (content, tokens) = await ApiClient.CompleteAsync(SystemPrompt, userMessage, MaxTokensOverride, jsonMode: false, ct);
             sw.Stop();
 
-            await Sender.SendTextAsync(request.ChatId, $"✅ [{RoleLabel}] tugadi", useMarkdown: false, ct);
+            var summary = ExtractSummary(content);
+            var doneMsg = summary != null ? $"[{RoleLabel}] {summary}" : $"✅ [{RoleLabel}] tugadi";
+            await Sender.SendTextAsync(request.ChatId, doneMsg, useMarkdown: false, ct);
 
             return AgentResponse.Success(request.TaskId, Role, content, tokens, sw.Elapsed);
         }
@@ -101,6 +103,16 @@ public abstract class AgentBase
         }
 
         return sb.ToString();
+    }
+
+    protected static string? ExtractSummary(string content)
+    {
+        const string startTag = "=== SUMMARY ===";
+        const string endTag   = "=== END SUMMARY ===";
+        var start = content.IndexOf(startTag, StringComparison.Ordinal);
+        var end   = content.IndexOf(endTag,   StringComparison.Ordinal);
+        if (start < 0 || end < 0 || end <= start) return null;
+        return content[(start + startTag.Length)..end].Trim();
     }
 
     private string RoleLabel => Role switch

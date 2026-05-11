@@ -32,7 +32,9 @@ public sealed class ArchitectAgent : AgentBase
             var (content, tokens) = await ApiClient.CompleteAsync(
                 SystemPrompt, userMessage, MaxTokensOverride, jsonMode: true, ct);
             sw.Stop();
-            await Sender.SendTextAsync(request.ChatId, "✅ [Architect] tugadi", useMarkdown: false, ct);
+            var summary = ExtractSummary(content);
+            var doneMsg = summary != null ? $"[Architect] {summary}" : "✅ [Architect] tugadi";
+            await Sender.SendTextAsync(request.ChatId, doneMsg, useMarkdown: false, ct);
             return AgentResponse.Success(request.TaskId, Role, content, tokens, sw.Elapsed);
         }
         catch (Exception ex)
@@ -178,5 +180,11 @@ public sealed class ArchitectAgent : AgentBase
         - path: src/ yoki tests/ dan boshlansin
         - Har fayl uchun aniq description yoz
         - Program.cs, appsettings.json, Dockerfile ham files da bo'lishi kerak
+
+        JSON dan KEYIN (JSON tugagandan so'ng, alohida blokda) quyidagi formatda yoz:
+        === SUMMARY ===
+        Nima qildim: (1 jumla)
+        Natija: (loyiha nomi, project soni, fayl soni)
+        === END SUMMARY ===
         """;
 }

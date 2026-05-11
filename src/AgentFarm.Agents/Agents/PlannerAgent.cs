@@ -37,5 +37,11 @@ public sealed class PlannerAgent : AgentBase
         3. [QA] Test yozish — qisqa tavsif
 
         Faqat ro'yxat. Ortiqcha matn yo'q.
+
+        Ishingni tugatgandan keyin OXIRIDA quyidagi formatda yoz:
+        === SUMMARY ===
+        Nima qildim: (1 jumla)
+        Natija: (qadam soni yoki asosiy natija)
+        === END SUMMARY ===
         """;
 }
