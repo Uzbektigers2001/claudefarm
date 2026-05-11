@@ -60,6 +60,9 @@ public sealed class ClaudeApiClient
     {
         var url = _options.BaseUrl.TrimEnd('/') + "/chat/completions";
 
+        // System prompt ni user message ga qo'shish (OmniRoute uchun)
+        var combinedMessage = $"{systemPrompt}\n\n---\n\n{userMessage}";
+
         // stream: false — streaming o'chirilgan, to'liq JSON javob kutamiz
         var body = new
         {
@@ -68,12 +71,15 @@ public sealed class ClaudeApiClient
             stream     = false,
             messages   = new[]
             {
-                new { role = "system", content = systemPrompt },
-                new { role = "user",   content = userMessage  }
+                new { role = "user", content = combinedMessage }
             }
         };
 
         _logger.LogDebug("OmniRoute: {Url}, Model={Model}", url, _options.Model);
+
+        _logger.LogInformation("=== REQUEST TO OMNIROUTE ===\n{Json}",
+            JsonSerializer.Serialize(body,
+                new JsonSerializerOptions { WriteIndented = true }));
 
         using var reqContent = JsonContent.Create(body, options: JsonOpts);
         var response = await _http.PostAsync(url, reqContent, ct);

@@ -21,30 +21,19 @@ public sealed class TelegramMessageSender : ITelegramMessageSender
     {
         try
         {
-            if (message.UseMarkdown)
-            {
-                await _botClient.SendMessage(
-                    chatId:            message.ChatId,
-                    text:              message.FormattedText,
-                    parseMode:         ParseMode.MarkdownV2,
-                    cancellationToken: ct);
-            }
-            else
-            {
-                await _botClient.SendMessage(
-                    chatId:            message.ChatId,
-                    text:              message.FormattedText,
-                    cancellationToken: ct);
-            }
+            // Har doim plain text (ParseMode = null)
+            await _botClient.SendMessage(
+                chatId:            message.ChatId,
+                text:              message.FormattedText,
+                cancellationToken: ct);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "MarkdownV2 bilan yuborishda xato, plain text ga o'tamiz. ChatId={ChatId}", message.ChatId);
-            await SendPlainAsync(message.ChatId, StripMarkdown(message.FormattedText), ct);
+            _logger.LogError(ex, "Xabar yuborishda xato. ChatId={ChatId}", message.ChatId);
         }
     }
 
-    public async Task SendTextAsync(long chatId, string text, bool useMarkdown = true, CancellationToken ct = default)
+    public async Task SendTextAsync(long chatId, string text, bool useMarkdown = false, CancellationToken ct = default)
     {
         await SendMessageAsync(new TelegramMessage
         {
@@ -53,25 +42,4 @@ public sealed class TelegramMessageSender : ITelegramMessageSender
             UseMarkdown = useMarkdown
         }, ct);
     }
-
-    private async Task SendPlainAsync(long chatId, string text, CancellationToken ct)
-    {
-        try
-        {
-            await _botClient.SendMessage(chatId, text, cancellationToken: ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Plain text ham yuborilmadi. ChatId={ChatId}", chatId);
-        }
-    }
-
-    private static string StripMarkdown(string text) =>
-        text.Replace("\\.", ".").Replace("\\!", "!").Replace("\\-", "-")
-            .Replace("\\(", "(").Replace("\\)", ")").Replace("\\[", "[")
-            .Replace("\\]", "]").Replace("\\*", "*").Replace("\\_", "_")
-            .Replace("\\`", "`").Replace("\\>", ">").Replace("\\#", "#")
-            .Replace("\\+", "+").Replace("\\=", "=").Replace("\\|", "|")
-            .Replace("\\{", "{").Replace("\\}", "}").Replace("\\~", "~")
-            .Replace("\\\\", "\\");
 }

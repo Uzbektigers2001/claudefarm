@@ -29,11 +29,11 @@ public abstract class AgentBase
     /// <summary>Agentga xos token chegarasi. null bo'lsa options dan oladi.</summary>
     protected virtual int? MaxTokensOverride => null;
 
-    public async Task<AgentResponse> RunAsync(AgentRequest request, string? previousContext = null, CancellationToken ct = default)
+    public virtual async Task<AgentResponse> RunAsync(AgentRequest request, string? previousContext = null, CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
 
-        await Sender.SendTextAsync(request.ChatId, $"⏳ *\\[{RoleLabel}\\]* ishlayapti\\.\\.\\.", useMarkdown: true, ct);
+        await Sender.SendTextAsync(request.ChatId, $"⏳ [{RoleLabel}] ishlayapti...", useMarkdown: false, ct);
 
         try
         {
@@ -49,7 +49,7 @@ public abstract class AgentBase
         {
             sw.Stop();
             Logger.LogError(ex, "{Role} agent xatosi. TaskId={TaskId}", Role, request.TaskId);
-            await Sender.SendTextAsync(request.ChatId, $"❌ *\\[{RoleLabel}\\]* xato: {EscapeMd(ex.Message)}", useMarkdown: true, ct);
+            await Sender.SendTextAsync(request.ChatId, $"❌ [{RoleLabel}] xato: {ex.Message}", useMarkdown: false, ct);
             return AgentResponse.Failure(request.TaskId, Role, ex.Message, sw.Elapsed);
         }
     }
@@ -133,13 +133,4 @@ public abstract class AgentBase
         AgentRole.Orchestrator    => "Orchestrator",
         _                         => Role.ToString()
     };
-
-    public static string EscapeMd(string text) =>
-        text.Replace("\\", "\\\\").Replace("_", "\\_").Replace("*", "\\*")
-            .Replace("[", "\\[").Replace("]", "\\]").Replace("(", "\\(")
-            .Replace(")", "\\)").Replace("~", "\\~").Replace("`", "\\`")
-            .Replace(">", "\\>").Replace("#", "\\#").Replace("+", "\\+")
-            .Replace("-", "\\-").Replace("=", "\\=").Replace("|", "\\|")
-            .Replace("{", "\\{").Replace("}", "\\}").Replace(".", "\\.")
-            .Replace("!", "\\!");
 }

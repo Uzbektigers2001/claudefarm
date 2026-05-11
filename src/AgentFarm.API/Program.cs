@@ -27,6 +27,13 @@ builder.Services.AddHttpClient<ClaudeApiClient>(client =>
     client.Timeout = TimeSpan.FromSeconds(120);
 });
 
+// --- GitHub Integration ---
+builder.Services.Configure<GitHubOptions>(
+    builder.Configuration.GetSection("GitHub"));
+
+builder.Services.AddSingleton<GitHubService>();
+builder.Services.AddSingleton<ProjectRepoService>();
+
 // --- Session Store ---
 builder.Services.AddSingleton<InMemorySessionStore>();
 
@@ -55,11 +62,14 @@ builder.Services.AddSingleton<IAgentPipelineRunner>(sp =>
     var reviewer         = sp.GetRequiredService<ReviewerAgent>();
     var sessionStore     = sp.GetRequiredService<InMemorySessionStore>();
     var sender           = sp.GetRequiredService<ITelegramMessageSender>();
+    var gitHubService    = sp.GetRequiredService<GitHubService>();
+    var projectRepoService = sp.GetRequiredService<ProjectRepoService>();
     var logger           = sp.GetRequiredService<ILogger<OrchestratorPipelineRunner>>();
 
     return new OrchestratorPipelineRunner(
         orchestrator, backend, frontend, devops, businessAnalyst,
-        security, databaseAdmin, qa, reviewer, sessionStore, sender, logger);
+        security, databaseAdmin, qa, reviewer, sessionStore, sender,
+        gitHubService, projectRepoService, logger);
 });
 
 // --- HTTP ---

@@ -14,11 +14,11 @@ public class TelegramMessage
     public AgentRole? SenderRole { get; init; }
 
     /// <summary>Markdown parse mode ishlatilsinmi.</summary>
-    public bool UseMarkdown { get; init; } = true;
+    public bool UseMarkdown { get; init; } = false;
 
-    /// <summary>Telegram xabari prefiks bilan to'liq matn.</summary>
+    /// <summary>Telegram xabari prefiks bilan to'liq matn (plain text).</summary>
     public string FormattedText => SenderRole.HasValue
-        ? $"*\\[{RoleLabel(SenderRole.Value)}\\]*\n\n{Text}"
+        ? $"[{RoleLabel(SenderRole.Value)}]\n\n{Text}"
         : Text;
 
     private static string RoleLabel(AgentRole role) => role switch

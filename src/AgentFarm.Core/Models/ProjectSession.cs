@@ -12,4 +12,10 @@ public class ProjectSession
     public string? FinalResult { get; set; }
     public SessionStatus Status { get; set; } = SessionStatus.Planning;
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
+
+    // Git integration
+    public string? RepoName { get; set; }
+    public string? BranchName { get; set; }
+    public int? PullRequestNumber { get; set; }
+    public string? PullRequestUrl { get; set; }
 }

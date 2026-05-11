@@ -31,6 +31,8 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
     private readonly ReviewerAgent                       _reviewer;
     private readonly InMemorySessionStore                _sessionStore;
     private readonly ITelegramMessageSender              _sender;
+    private readonly GitHubService                       _gitHubService;
+    private readonly ProjectRepoService                  _projectRepoService;
     private readonly ILogger<OrchestratorPipelineRunner> _logger;
 
     public OrchestratorPipelineRunner(
@@ -45,6 +47,8 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
         ReviewerAgent         reviewer,
         InMemorySessionStore  sessionStore,
         ITelegramMessageSender sender,
+        GitHubService         gitHubService,
+        ProjectRepoService    projectRepoService,
         ILogger<OrchestratorPipelineRunner> logger)
     {
         _orchestrator      = orchestrator;
@@ -58,6 +62,8 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
         _reviewer          = reviewer;
         _sessionStore      = sessionStore;
         _sender            = sender;
+        _gitHubService     = gitHubService;
+        _projectRepoService = projectRepoService;
         _logger            = logger;
     }
 
@@ -107,12 +113,8 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
             }
             _sessionStore.UpdateSession(session);
 
-            // Telegram ga xabar
-            await _sender.SendTextAsync(request.ChatId,
-                $"📋 Vazifa {subtasks.Count} qismga bo'lindi:\n" +
-                string.Join("\n", subtasks.Select((st, i) =>
-                    $"{i + 1}. [{st.DisplayName}] {st.Description.Substring(0, Math.Min(50, st.Description.Length))}...")),
-                useMarkdown: false, ct);
+            // 🔧 Git Integration: Repo va branch yaratish (jim)
+            await SetupGitRepositoryAsync(session, request, ct);
 
             // 2️⃣ Parallel: Barcha rollar parallel ishlaydi (QA va Reviewer bundan mustasno)
             session.Status = SessionStatus.Developing;
@@ -142,15 +144,18 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
                         subtask.Code = response.Content;
                         subtask.Status = SubTaskStatus.Done;
 
-                        // Telegram ga darhol xabar
+                        // Git: Commit qilish
+                        await CommitAgentResultAsync(session, subtask, ct);
+
+                        // Telegram: qisqa xabar
                         await _sender.SendTextAsync(request.ChatId,
-                            $"✅ [{subtask.DisplayName}] vazifani tugatdi", useMarkdown: false, ct);
+                            $"[{subtask.DisplayName}] ✅", useMarkdown: false, ct);
                     }
                     else
                     {
                         subtask.Status = SubTaskStatus.Failed;
                         await _sender.SendTextAsync(request.ChatId,
-                            $"❌ [{subtask.DisplayName}] xato", useMarkdown: false, ct);
+                            $"[{subtask.DisplayName}] ❌ xato", useMarkdown: false, ct);
                     }
 
                     _sessionStore.UpdateSession(session);
@@ -163,6 +168,9 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
                 .ToList();
             responses.AddRange(developmentResponses);
 
+            // Git: PR yaratish
+            await CreatePullRequestAsync(session, request, ct);
+
             // 3️⃣ QA - barcha developer kodlarini ko'radi
             session.Status = SessionStatus.QA;
             _sessionStore.UpdateSession(session);
@@ -171,6 +179,27 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
             var qaResponse = await _qa.RunAsync(request, previousContext: allDeveloperCode, ct);
             responses.Add(qaResponse);
 
+            // Git: QA natijasini commit qilish
+            if (qaResponse.Status == AgentStatus.Completed)
+            {
+                var qaSubtask = session.SubTasks.FirstOrDefault(st => st.AssignedTo == AgentRole.QA);
+                if (qaSubtask != null)
+                {
+                    qaSubtask.Code = qaResponse.Content;
+                    qaSubtask.Status = SubTaskStatus.Done;
+                    await CommitAgentResultAsync(session, qaSubtask, ct);
+                }
+
+                // Telegram: qisqa xabar
+                await _sender.SendTextAsync(request.ChatId,
+                    "[QA] ✅", useMarkdown: false, ct);
+            }
+            else
+            {
+                await _sender.SendTextAsync(request.ChatId,
+                    "[QA] ❌ xato", useMarkdown: false, ct);
+            }
+
             // 4️⃣ Reviewer - Developer kodlari + QA natijasini ko'radi
             session.Status = SessionStatus.Reviewing;
             _sessionStore.UpdateSession(session);
@@ -178,6 +207,30 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
             var reviewerContext = BuildReviewerContext(allDeveloperCode, qaResponse.Content);
             var reviewerResponse = await _reviewer.RunAsync(request, previousContext: reviewerContext, ct);
             responses.Add(reviewerResponse);
+
+            // Git: Reviewer natijasini commit qilish
+            if (reviewerResponse.Status == AgentStatus.Completed)
+            {
+                var reviewerSubtask = session.SubTasks.FirstOrDefault(st => st.AssignedTo == AgentRole.Reviewer);
+                if (reviewerSubtask != null)
+                {
+                    reviewerSubtask.Code = reviewerResponse.Content;
+                    reviewerSubtask.Status = SubTaskStatus.Done;
+                    await CommitAgentResultAsync(session, reviewerSubtask, ct);
+                }
+
+                // Telegram: qisqa xabar
+                await _sender.SendTextAsync(request.ChatId,
+                    "[Reviewer] ✅", useMarkdown: false, ct);
+
+                // Git: PR ni merge qilish yoki comment qoldirish
+                await HandleReviewerDecisionAsync(session, reviewerResponse.Content, ct);
+            }
+            else
+            {
+                await _sender.SendTextAsync(request.ChatId,
+                    "[Reviewer] ❌ xato", useMarkdown: false, ct);
+            }
 
             // Yakuniy natija
             session.FinalResult = reviewerResponse.Content;
@@ -189,9 +242,14 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
             var successful = responses.Count(r => r.Status == AgentStatus.Completed);
             var total = responses.Count;
 
-            await _sender.SendTextAsync(request.ChatId,
-                $"✅ Pipeline tugadi — {successful}/{total} muvaffaqiyatli | {(int)sw.Elapsed.TotalSeconds}s",
-                useMarkdown: false, ct);
+            // Yakuniy xabar: PR link bilan
+            var finalMessage = $"✅ Tugadi: {successful} agent | {(int)sw.Elapsed.TotalSeconds}s";
+            if (!string.IsNullOrWhiteSpace(session.PullRequestUrl))
+            {
+                finalMessage += $" | PR: {session.PullRequestUrl}";
+            }
+
+            await _sender.SendTextAsync(request.ChatId, finalMessage, useMarkdown: false, ct);
 
             return new PipelineResult
             {
@@ -366,6 +424,178 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
             OriginalPrompt = request.Prompt,
             AgentResponses = responses,
             TotalDuration  = duration
+        };
+    }
+
+    // ==================== Git Integration Helper Methods ====================
+
+    /// <summary>
+    /// Repo va branch yaratish
+    /// </summary>
+    private async Task SetupGitRepositoryAsync(ProjectSession session, AgentRequest request, CancellationToken ct)
+    {
+        try
+        {
+            // Project nomi: task'ning birinchi 30 belgisi
+            var projectName = session.OriginalTask.Length > 30
+                ? session.OriginalTask[..30]
+                : session.OriginalTask;
+
+            // Repo yaratish/tekshirish
+            var repoName = await _projectRepoService.CreateProjectRepoAsync(projectName, ct);
+            session.RepoName = repoName;
+
+            // Branch yaratish
+            var branchName = $"task/{session.SessionId:N}";
+            await _gitHubService.CreateBranchAsync(repoName, branchName, ct);
+            session.BranchName = branchName;
+
+            _sessionStore.UpdateSession(session);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Git repository setup xatosi");
+            // Git xatosi bo'lsa ham pipeline davom etadi
+        }
+    }
+
+    /// <summary>
+    /// Agent natijasini commit qilish
+    /// </summary>
+    private async Task CommitAgentResultAsync(ProjectSession session, SubTask subtask, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(session.RepoName) || string.IsNullOrWhiteSpace(session.BranchName))
+            return;
+
+        try
+        {
+            var filePath = GetFilePathForAgent(subtask);
+            var commitMessage = $"[{subtask.DisplayName}] {subtask.Description}";
+
+            await _gitHubService.CommitFileAsync(
+                session.RepoName,
+                session.BranchName,
+                filePath,
+                subtask.Code ?? "",
+                commitMessage,
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Git commit xatosi: {SubTask}", subtask.DisplayName);
+        }
+    }
+
+    /// <summary>
+    /// PR yaratish
+    /// </summary>
+    private async Task CreatePullRequestAsync(ProjectSession session, AgentRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(session.RepoName) || string.IsNullOrWhiteSpace(session.BranchName))
+            return;
+
+        try
+        {
+            var prTitle = $"Task: {session.OriginalTask}";
+            var prBody = $"""
+                ## Task
+                {session.OriginalTask}
+
+                ## Subtasks
+                {string.Join("\n", session.SubTasks.Select(st => $"- [{st.DisplayName}] {st.Description}"))}
+
+                ---
+                🤖 Generated by ClaudeFarm
+                """;
+
+            var pr = await _gitHubService.CreatePullRequestAsync(
+                session.RepoName,
+                session.BranchName,
+                prTitle,
+                prBody,
+                ct);
+
+            session.PullRequestNumber = pr.Number;
+            session.PullRequestUrl = pr.HtmlUrl;
+            _sessionStore.UpdateSession(session);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "PR yaratishda xato");
+        }
+    }
+
+    /// <summary>
+    /// Reviewer qarorini qayta ishlash (LGTM bo'lsa merge, aks holda comment)
+    /// </summary>
+    private async Task HandleReviewerDecisionAsync(ProjectSession session, string reviewerContent, CancellationToken ct)
+    {
+        if (!session.PullRequestNumber.HasValue ||
+            string.IsNullOrWhiteSpace(session.RepoName) ||
+            string.IsNullOrWhiteSpace(session.PullRequestUrl))
+            return;
+
+        try
+        {
+            // LGTM yoki approval yozuvlari bor-yo'qligini tekshirish
+            var contentLower = reviewerContent.ToLowerInvariant();
+            var isApproved = contentLower.Contains("lgtm") ||
+                           contentLower.Contains("approved") ||
+                           contentLower.Contains("looks good") ||
+                           contentLower.Contains("✅");
+
+            if (isApproved)
+            {
+                // PR ni merge qilish
+                var merged = await _gitHubService.MergePullRequestAsync(
+                    session.RepoName,
+                    session.PullRequestNumber.Value,
+                    $"Merged: {session.OriginalTask}",
+                    ct);
+
+                if (merged)
+                {
+                    await _sender.SendTextAsync(session.ChatId,
+                        $"✅ PR merge qilindi: {session.PullRequestUrl}", useMarkdown: false, ct);
+                }
+                else
+                {
+                    await _sender.SendTextAsync(session.ChatId,
+                        $"⚠️ PR merge qilishda xato: {session.PullRequestUrl}", useMarkdown: false, ct);
+                }
+            }
+            else
+            {
+                // Reviewer o'zgarish talab qilgan
+                await _sender.SendTextAsync(session.ChatId,
+                    $"⚠️ PR review kerak: {session.PullRequestUrl}\n\nReviewer sharhi:\n{reviewerContent}",
+                    useMarkdown: false, ct);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "PR handle qilishda xato");
+        }
+    }
+
+    /// <summary>
+    /// Agent uchun fayl yo'lini olish
+    /// </summary>
+    private static string GetFilePathForAgent(SubTask subtask)
+    {
+        var fileName = $"{subtask.SubTaskId:N}";
+
+        return subtask.AssignedTo switch
+        {
+            AgentRole.Backend => $"src/backend/{fileName}.cs",
+            AgentRole.Frontend => $"src/frontend/{fileName}.tsx",
+            AgentRole.DevOps => $"devops/{fileName}.yml",
+            AgentRole.DatabaseAdmin => $"db/{fileName}.sql",
+            AgentRole.Security => $"docs/security-{fileName}.md",
+            AgentRole.BusinessAnalyst => $"docs/ba-{fileName}.md",
+            AgentRole.QA => $"tests/{fileName}.cs",
+            AgentRole.Reviewer => $"docs/review-{fileName}.md",
+            _ => $"misc/{fileName}.txt"
         };
     }
 }
