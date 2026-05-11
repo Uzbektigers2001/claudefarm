@@ -1,0 +1,7 @@
+**/.vs
+**/.vscode
+**/.idea
+**/obj
+**/bin
+**/.git
+**/README.md

@@ -19,3 +19,6 @@ appsettings.Staging.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Local secrets — gitga tushmaydi
+src/AgentFarm.API/appsettings.Development.json

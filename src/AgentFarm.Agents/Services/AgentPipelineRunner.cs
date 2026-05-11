@@ -9,22 +9,21 @@ using System.Diagnostics;
 namespace AgentFarm.Agents.Services;
 
 /// <summary>
-/// Orchestrator — agentlarni parallel ishlatadi,
-/// har biri o'z natijasini Telegram ga yuboradi.
+/// Sequential pipeline: Developer → QA (Developer kodini ko'radi) → Reviewer (ikkalasini ko'radi).
 /// </summary>
 public sealed class AgentPipelineRunner : IAgentPipelineRunner
 {
-    private readonly DeveloperAgent             _developer;
-    private readonly QAAgent                    _qa;
-    private readonly ReviewerAgent              _reviewer;
-    private readonly ITelegramMessageSender     _sender;
+    private readonly DeveloperAgent              _developer;
+    private readonly QAAgent                     _qa;
+    private readonly ReviewerAgent               _reviewer;
+    private readonly ITelegramMessageSender      _sender;
     private readonly ILogger<AgentPipelineRunner> _logger;
 
     public AgentPipelineRunner(
-        DeveloperAgent              developer,
-        QAAgent                     qa,
-        ReviewerAgent               reviewer,
-        ITelegramMessageSender      sender,
+        DeveloperAgent               developer,
+        QAAgent                      qa,
+        ReviewerAgent                reviewer,
+        ITelegramMessageSender       sender,
         ILogger<AgentPipelineRunner> logger)
     {
         _developer = developer;
@@ -37,42 +36,76 @@ public sealed class AgentPipelineRunner : IAgentPipelineRunner
     public async Task<PipelineResult> RunAsync(AgentRequest request, CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
-        _logger.LogInformation("Pipeline boshlandi. TaskId={TaskId}", request.TaskId);
+        var responses = new List<AgentResponse>();
 
-        // Faqat so'ralgan rollarni parallel ishlatamiz
-        var tasks = request.RequestedRoles
-            .Select(role => RunAgentAsync(role, request, ct))
-            .ToList();
+        _logger.LogInformation("Pipeline boshlandi. TaskId={TaskId}, Rollar={Roles}",
+            request.TaskId, string.Join(", ", request.RequestedRoles));
 
-        var responses = await Task.WhenAll(tasks);
+        // 1. Developer
+        string? devCode = null;
+        if (request.RequestedRoles.Contains(AgentRole.Developer))
+        {
+            var devResponse = await _developer.RunAsync(request, previousContext: null, ct);
+            responses.Add(devResponse);
+            if (devResponse.Status == AgentStatus.Completed)
+                devCode = devResponse.Content;
+        }
+
+        // 2. QA — Developer kodini context sifatida oladi
+        string? qaFindings = null;
+        if (request.RequestedRoles.Contains(AgentRole.QA))
+        {
+            var qaResponse = await _qa.RunAsync(request, previousContext: devCode, ct);
+            responses.Add(qaResponse);
+            if (qaResponse.Status == AgentStatus.Completed)
+                qaFindings = qaResponse.Content;
+        }
+
+        // 3. Reviewer — Developer kodi + QA topilmalarini ko'radi
+        if (request.RequestedRoles.Contains(AgentRole.Reviewer))
+        {
+            var reviewerContext = BuildReviewerContext(devCode, qaFindings);
+            var reviewResponse  = await _reviewer.RunAsync(request, previousContext: reviewerContext, ct);
+            responses.Add(reviewResponse);
+        }
+
         sw.Stop();
 
-        // Yakuniy xulosa yuboramiz
         var successful = responses.Count(r => r.Status == AgentStatus.Completed);
+        var total      = responses.Count;
+
         await _sender.SendTextAsync(
             request.ChatId,
-            $"✅ Barcha agentlar tugadi \\— {successful}/{responses.Length} muvaffaqiyatli\\. " +
-            $"Jami: {(int)sw.Elapsed.TotalSeconds}s",
+            $"✅ Pipeline tugadi — {successful}/{total} muvaffaqiyatli \\| {(int)sw.Elapsed.TotalSeconds}s",
             useMarkdown: true,
             ct);
 
         return new PipelineResult
         {
-            TaskId          = request.TaskId,
-            ChatId          = request.ChatId,
-            OriginalPrompt  = request.Prompt,
-            AgentResponses  = responses,
-            TotalDuration   = sw.Elapsed
+            TaskId         = request.TaskId,
+            ChatId         = request.ChatId,
+            OriginalPrompt = request.Prompt,
+            AgentResponses = responses,
+            TotalDuration  = sw.Elapsed
         };
     }
 
-    private Task<AgentResponse> RunAgentAsync(AgentRole role, AgentRequest request, CancellationToken ct) =>
-        role switch
+    private static string? BuildReviewerContext(string? devCode, string? qaFindings)
+    {
+        if (devCode is null && qaFindings is null) return null;
+
+        var sb = new System.Text.StringBuilder();
+        if (devCode is not null)
         {
-            AgentRole.Developer => _developer.RunAsync(request, ct),
-            AgentRole.QA        => _qa.RunAsync(request, ct),
-            AgentRole.Reviewer  => _reviewer.RunAsync(request, ct),
-            _                   => Task.FromResult(AgentResponse.Failure(
-                                       request.TaskId, role, $"Noma'lum rol: {role}", TimeSpan.Zero))
-        };
+            sb.AppendLine("### Developer yozgan kod");
+            sb.AppendLine(devCode);
+        }
+        if (qaFindings is not null)
+        {
+            sb.AppendLine();
+            sb.AppendLine("### QA topilmalari");
+            sb.AppendLine(qaFindings);
+        }
+        return sb.ToString();
+    }
 }

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using AgentFarm.Agents.Services;
 using AgentFarm.Bot.Interfaces;
 using AgentFarm.Core.Enums;
@@ -7,20 +8,15 @@ using Microsoft.Extensions.Logging;
 
 namespace AgentFarm.Agents.Base;
 
-/// <summary>
-/// Barcha agentlar uchun asosiy klass.
-/// Har agent: system prompt + Claude API + Telegram xabar yuborish.
-/// </summary>
 public abstract class AgentBase
 {
-    protected readonly ClaudeApiClient      ApiClient;
+    protected readonly ClaudeApiClient        ApiClient;
     protected readonly ITelegramMessageSender Sender;
-    protected readonly ILogger              Logger;
+    protected readonly ILogger                Logger;
 
-    protected AgentBase(
-        ClaudeApiClient       apiClient,
-        ITelegramMessageSender sender,
-        ILogger               logger)
+    private const int TelegramMaxLength = 4000;
+
+    protected AgentBase(ClaudeApiClient apiClient, ITelegramMessageSender sender, ILogger logger)
     {
         ApiClient = apiClient;
         Sender    = sender;
@@ -30,35 +26,19 @@ public abstract class AgentBase
     public abstract AgentRole Role { get; }
     protected abstract string SystemPrompt { get; }
 
-    /// <summary>
-    /// Agentni ishga tushiradi, natijani Telegram ga yuboradi.
-    /// </summary>
-    public async Task<AgentResponse> RunAsync(AgentRequest request, CancellationToken ct = default)
+    public async Task<AgentResponse> RunAsync(AgentRequest request, string? previousContext = null, CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
 
-        // "Ishlamoqda..." xabari
-        await Sender.SendTextAsync(
-            request.ChatId,
-            $"⏳ *\\[{RoleLabel}\\]* ishlayapti\\.\\.\\.",
-            useMarkdown: true,
-            ct);
+        await Sender.SendTextAsync(request.ChatId, $"⏳ *\\[{RoleLabel}\\]* ishlayapti\\.\\.\\.", useMarkdown: true, ct);
 
         try
         {
-            var userMessage = BuildUserMessage(request);
+            var userMessage = BuildUserMessage(request, previousContext);
             var (content, tokens) = await ApiClient.CompleteAsync(SystemPrompt, userMessage, ct);
-
             sw.Stop();
 
-            // Natijani Telegram ga yuboramiz
-            await Sender.SendMessageAsync(new TelegramMessage
-            {
-                ChatId      = request.ChatId,
-                Text        = content,
-                SenderRole  = Role,
-                UseMarkdown = true
-            }, ct);
+            await SendChunkedAsync(request.ChatId, content, ct);
 
             return AgentResponse.Success(request.TaskId, Role, content, tokens, sw.Elapsed);
         }
@@ -66,44 +46,89 @@ public abstract class AgentBase
         {
             sw.Stop();
             Logger.LogError(ex, "{Role} agent xatosi. TaskId={TaskId}", Role, request.TaskId);
-
-            await Sender.SendTextAsync(
-                request.ChatId,
-                $"❌ *\\[{RoleLabel}\\]* xato: {EscapeMarkdown(ex.Message)}",
-                useMarkdown: true,
-                ct);
-
+            await Sender.SendTextAsync(request.ChatId, $"❌ *\\[{RoleLabel}\\]* xato: {EscapeMd(ex.Message)}", useMarkdown: true, ct);
             return AgentResponse.Failure(request.TaskId, Role, ex.Message, sw.Elapsed);
         }
     }
 
-    /// <summary>
-    /// Foydalanuvchi xabarini quradi. Subklass override qilishi mumkin.
-    /// </summary>
-    protected virtual string BuildUserMessage(AgentRequest request)
+    protected virtual string BuildUserMessage(AgentRequest request, string? previousContext)
     {
-        var sb = new System.Text.StringBuilder();
+        var sb = new StringBuilder();
         sb.AppendLine(request.Prompt);
+
+        if (!string.IsNullOrWhiteSpace(previousContext))
+        {
+            sb.AppendLine();
+            sb.AppendLine("## Oldingi agent natijasi");
+            sb.AppendLine(previousContext);
+        }
 
         if (!string.IsNullOrWhiteSpace(request.Context))
         {
             sb.AppendLine();
-            sb.AppendLine("## Kontekst");
+            sb.AppendLine("## Qo'shimcha kontekst");
             sb.AppendLine(request.Context);
         }
 
         return sb.ToString();
     }
 
+    private async Task SendChunkedAsync(long chatId, string content, CancellationToken ct)
+    {
+        if (content.Length <= TelegramMaxLength)
+        {
+            await Sender.SendMessageAsync(new TelegramMessage { ChatId = chatId, Text = content, SenderRole = Role, UseMarkdown = true }, ct);
+            return;
+        }
+
+        var chunks = SplitIntoChunks(content, TelegramMaxLength);
+        for (var i = 0; i < chunks.Count; i++)
+        {
+            var isFirst = i == 0;
+            await Sender.SendMessageAsync(new TelegramMessage
+            {
+                ChatId      = chatId,
+                Text        = isFirst ? chunks[i] : $"({i + 1}/{chunks.Count})\n{chunks[i]}",
+                SenderRole  = isFirst ? Role : null,
+                UseMarkdown = false
+            }, ct);
+            if (i < chunks.Count - 1) await Task.Delay(300, ct);
+        }
+    }
+
+    private static List<string> SplitIntoChunks(string text, int chunkSize)
+    {
+        var chunks = new List<string>();
+        var i = 0;
+        while (i < text.Length)
+        {
+            var len = Math.Min(chunkSize, text.Length - i);
+            if (i + len < text.Length)
+            {
+                var lastNewline = text.LastIndexOf('\n', i + len, len);
+                if (lastNewline > i) len = lastNewline - i;
+            }
+            chunks.Add(text.Substring(i, len));
+            i += len;
+        }
+        return chunks;
+    }
+
     private string RoleLabel => Role switch
     {
-        AgentRole.Developer  => "Developer",
-        AgentRole.QA         => "QA",
-        AgentRole.Reviewer   => "Reviewer",
+        AgentRole.Developer    => "Developer",
+        AgentRole.QA           => "QA",
+        AgentRole.Reviewer     => "Reviewer",
         AgentRole.Orchestrator => "Orchestrator",
-        _                    => Role.ToString()
+        _                      => Role.ToString()
     };
 
-    private static string EscapeMarkdown(string text) =>
-        text.Replace(".", "\\.").Replace("!", "\\!").Replace("-", "\\-");
+    public static string EscapeMd(string text) =>
+        text.Replace("\\", "\\\\").Replace("_", "\\_").Replace("*", "\\*")
+            .Replace("[", "\\[").Replace("]", "\\]").Replace("(", "\\(")
+            .Replace(")", "\\)").Replace("~", "\\~").Replace("`", "\\`")
+            .Replace(">", "\\>").Replace("#", "\\#").Replace("+", "\\+")
+            .Replace("-", "\\-").Replace("=", "\\=").Replace("|", "\\|")
+            .Replace("{", "\\{").Replace("}", "\\}").Replace(".", "\\.")
+            .Replace("!", "\\!");
 }
