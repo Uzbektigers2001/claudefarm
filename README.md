@@ -93,10 +93,37 @@ src/
 
 ### 4. Ishga tushirish
 
+**CLI orqali:**
 ```bash
 cd src/AgentFarm.API
 dotnet run
 ```
+
+**IDE orqali (Visual Studio / Rider / VS Code):**
+- `Development` profili - Oddiy ishga tushirish
+- `Development (Watch)` profili - Hot reload bilan (kod o'zgarganda avtomatik qayta yuklanadi)
+- `Production` profili - Production muhitida test qilish uchun
+
+**Kutilgan natija:**
+```
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5000
+info: Program[0]
+      🚀 ClaudeFarm ishga tushdi | Environment=Development | API=http://localhost:20128/v1 | Model=kr/claude-sonnet-4.5
+info: Program[0]
+      📝 Development rejimi - appsettings.Development.json ishlatilmoqda
+info: AgentFarm.Bot.Services.TelegramPollingService[0]
+      Telegram polling boshlandi (local development rejimi)
+info: Program[0]
+      Polling rejimi (local development)
+```
+
+**Eslatma:** Development muhitida:
+- `appsettings.Development.json` dan konfiguratsiyalar olinadi
+- AgentFarm namespace uchun Debug level logging faol
+- Polling rejimi ishlatiladi (webhook emas)
+
+Endi Telegram botga `/start` yoki `/help` yozib test qilishingiz mumkin.
 
 ## Mualliflar
 
