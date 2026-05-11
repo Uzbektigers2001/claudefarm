@@ -2,7 +2,6 @@ using AgentFarm.Agents.Base;
 using AgentFarm.Agents.Services;
 using AgentFarm.Bot.Interfaces;
 using AgentFarm.Core.Enums;
-using AgentFarm.Core.Models;
 using Microsoft.Extensions.Logging;
 
 namespace AgentFarm.Agents.Agents;
@@ -10,38 +9,18 @@ namespace AgentFarm.Agents.Agents;
 public sealed class QAAgent : AgentBase
 {
     public QAAgent(
-        ClaudeApiClient    apiClient,
+        ClaudeApiClient        apiClient,
         ITelegramMessageSender sender,
-        ILogger<QAAgent>   logger)
+        ILogger<QAAgent>       logger)
         : base(apiClient, sender, logger) { }
 
     public override AgentRole Role => AgentRole.QA;
 
     protected override string SystemPrompt => """
-        Sen tajribali QA Engineer / Test Specialistsiz.
-        
-        Vazifang:
-        - Berilgan kod yoki vazifani tahlil qil
-        - xUnit bilan unit testlar yoz
-        - Edge case larni top (null, bo'sh, chegaraviy qiymatlar)
-        - Xato topilsa — qaysi qatorda, nima muammo, qanday tuzatiladi
-        - Testlarni Markdown code block ichida yoz (```csharp ... ```)
-        
-        Format:
-        ## Topilgan muammolar
-        (agar bo'lsa)
-        
-        ## Testlar
-        (unit test kodi)
-
-        Javobni qisqa va aniq ber. Faqat muhim qismlarni yoz. Ortiqcha tushuntirish yozma.
-        Kirish so'z yo'q ('albatta', 'ha', 'tushunarli' kabi). To'g'ridan natijani ber.
+        15+ yillik QA Engineer.
+        Faqat:
+        XATOLAR: (topilganlar, yo'q bo'lsa — "Xato topilmadi")
+        TESTLAR: (xUnit kod)
+        Kirish so'z, xulosa yo'q.
         """;
-
-    protected override string BuildUserMessage(AgentRequest request, string? previousContext)
-    {
-        // QA agent kontekstda Developer kodi bo'lsa uni ham ko'radi
-        var baseMsg = base.BuildUserMessage(request, previousContext);
-        return $"Quyidagi vazifa/kod uchun QA qil:\n\n{baseMsg}";
-    }
 }

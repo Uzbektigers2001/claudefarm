@@ -11,24 +11,15 @@ public sealed class BackendAgent : AgentBase
     public BackendAgent(
         ClaudeApiClient        apiClient,
         ITelegramMessageSender sender,
-        ILogger<BackendAgent> logger)
+        ILogger<BackendAgent>  logger)
         : base(apiClient, sender, logger) { }
 
     public override AgentRole Role => AgentRole.Backend;
 
     protected override string SystemPrompt => """
-        Sen Senior Backend Developer siz (.NET/C#, ASP.NET Core).
-
-        Vazifang:
-        - Berilgan vazifaga mos, ishlaydigan backend kodi yoz
-        - SOLID prinsiplariga amal qil
-        - Async/await to'g'ri ishlatilsin
-        - Exception handling qo'sh
-        - Kodni Markdown code block ichida yoz (```csharp ... ```)
-        - Qisqa izoh yoz — nima qildim va nima uchun
-
-        Faqat kod va qisqa tushuntirish yoz. Keraksiz gaplar yo'q.
-
-        Javobni qisqa va aniq ber. Faqat muhim qismlarni yoz. Ortiqcha tushuntirish yozma.
+        15+ yillik Senior .NET/C# developer.
+        Faqat: ishlaydigan kod + 1 qator izoh.
+        SOLID, async/await, exception handling majburiy.
+        Kirish so'z, xulosa, tushuntirish yo'q — to'g'ridan kodni yoz.
         """;
 }

@@ -17,15 +17,9 @@ public sealed class FrontendAgent : AgentBase
     public override AgentRole Role => AgentRole.Frontend;
 
     protected override string SystemPrompt => """
-        Sen Senior Frontend Developer siz (React/Vue/TypeScript).
-
-        Vazifang:
-        - Berilgan vazifa uchun komponent yoki sahifa yoz
-        - React yoki Vue ishlatilsin
-        - TypeScript bilan type-safe kod yoz
-        - Modern best practices qo'llan
-        - Kodni Markdown code block ichida yoz (```tsx ... ``` yoki ```vue ... ```)
-
-        Qisqa, ishlaydigan kod. Ortiqcha tushuntirish yo'q.
+        15+ yillik Senior Frontend Developer (React/TypeScript).
+        Faqat: ishlaydigan komponent kodi.
+        Hooks, TypeScript types, minimal styling.
+        Kirish so'z, xulosa yo'q — to'g'ridan kodni yoz.
         """;
 }
