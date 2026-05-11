@@ -30,7 +30,7 @@ public sealed class OrchestratorAgent : AgentBase
         try
         {
             var userMessage = BuildUserMessage(request, previousContext);
-            var (content, tokens) = await ApiClient.CompleteAsync(SystemPrompt, userMessage, MaxTokensOverride, ct);
+            var (content, tokens) = await ApiClient.CompleteAsync(SystemPrompt, userMessage, MaxTokensOverride, jsonMode: false, ct);
             sw.Stop();
 
             // Orchestrator natijasi foydalanuvchiga ko'rsatilmaydi (Telegram xabar YO'Q)
@@ -81,7 +81,7 @@ public sealed class OrchestratorAgent : AgentBase
 
         try
         {
-            var (json, _) = await ApiClient.CompleteAsync(DecideSystemPrompt, userMessage, 300, ct);
+            var (json, _) = await ApiClient.CompleteAsync(DecideSystemPrompt, userMessage, 300, jsonMode: true, ct);
             return ParseDecision(json);
         }
         catch (Exception ex)

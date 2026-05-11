@@ -46,30 +46,32 @@ public sealed class ClaudeApiClient
         string systemPrompt,
         string userMessage,
         int? maxTokens = null,
+        bool jsonMode  = false,
         CancellationToken ct = default)
     {
         return _options.UseOmniRoute
-            ? await CompleteOpenAiFormatAsync(systemPrompt, userMessage, ct)
-            : await CompleteAnthropicFormatAsync(systemPrompt, userMessage, ct);
+            ? await CompleteOpenAiFormatAsync(systemPrompt, userMessage, maxTokens, jsonMode, ct)
+            : await CompleteAnthropicFormatAsync(systemPrompt, userMessage, maxTokens, ct);
     }
 
     private async Task<(string Content, int TokensUsed)> CompleteOpenAiFormatAsync(
         string systemPrompt,
         string userMessage,
+        int? maxTokens,
+        bool jsonMode,
         CancellationToken ct)
     {
         var url = _options.BaseUrl.TrimEnd('/') + "/chat/completions";
 
-        // System prompt ni user message ga qo'shish (OmniRoute uchun)
         var combinedMessage = $"{systemPrompt}\n\n---\n\n{userMessage}";
 
-        // stream: false — streaming o'chirilgan, to'liq JSON javob kutamiz
         var body = new
         {
-            model      = _options.Model,
-            max_tokens = _options.MaxTokens,
-            stream     = false,
-            messages   = new[]
+            model           = _options.Model,
+            max_tokens      = maxTokens ?? _options.MaxTokens,
+            stream          = false,
+            response_format = jsonMode ? new { type = "json_object" } : null,
+            messages        = new[]
             {
                 new { role = "user", content = combinedMessage }
             }
@@ -107,6 +109,7 @@ public sealed class ClaudeApiClient
     private async Task<(string Content, int TokensUsed)> CompleteAnthropicFormatAsync(
         string systemPrompt,
         string userMessage,
+        int? maxTokens,
         CancellationToken ct)
     {
         var url = _options.BaseUrl.TrimEnd('/') + "/messages";
@@ -114,7 +117,7 @@ public sealed class ClaudeApiClient
         var body = new
         {
             model      = _options.Model,
-            max_tokens = _options.MaxTokens,
+            max_tokens = maxTokens ?? _options.MaxTokens,
             stream     = false,
             system     = systemPrompt,
             messages   = new[]

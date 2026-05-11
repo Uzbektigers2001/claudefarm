@@ -38,7 +38,7 @@ public abstract class AgentBase
         try
         {
             var userMessage = BuildUserMessage(request, previousContext);
-            var (content, tokens) = await ApiClient.CompleteAsync(SystemPrompt, userMessage, MaxTokensOverride, ct);
+            var (content, tokens) = await ApiClient.CompleteAsync(SystemPrompt, userMessage, MaxTokensOverride, jsonMode: false, ct);
             sw.Stop();
 
             await Sender.SendTextAsync(request.ChatId, $"✅ [{RoleLabel}] tugadi", useMarkdown: false, ct);

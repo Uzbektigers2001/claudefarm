@@ -16,10 +16,33 @@ public sealed class ArchitectAgent : AgentBase
         ILogger<ArchitectAgent>    logger)
         : base(apiClient, sender, logger) { }
 
-    public override AgentRole Role => AgentRole.Architect;
+    public override AgentRole Role    => AgentRole.Architect;
+    public override bool      IsEnabled => true;
 
-    // Architect ko'p fayl yaratadi — 2000 token yetarli
     protected override int? MaxTokensOverride => 2000;
+
+    public override async Task<AgentResponse> RunAsync(
+        AgentRequest request, string? previousContext = null, CancellationToken ct = default)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await Sender.SendTextAsync(request.ChatId, "⏳ [Architect] ishlayapti...", useMarkdown: false, ct);
+        try
+        {
+            var userMessage = BuildUserMessage(request, previousContext);
+            var (content, tokens) = await ApiClient.CompleteAsync(
+                SystemPrompt, userMessage, MaxTokensOverride, jsonMode: true, ct);
+            sw.Stop();
+            await Sender.SendTextAsync(request.ChatId, "✅ [Architect] tugadi", useMarkdown: false, ct);
+            return AgentResponse.Success(request.TaskId, Role, content, tokens, sw.Elapsed);
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            Logger.LogError(ex, "{Role} agent xatosi. TaskId={TaskId}", Role, request.TaskId);
+            await Sender.SendTextAsync(request.ChatId, $"❌ [Architect] xato: {ex.Message}", useMarkdown: false, ct);
+            return AgentResponse.Failure(request.TaskId, Role, ex.Message, sw.Elapsed);
+        }
+    }
 
     protected override string SystemPrompt => """
         Sen 15+ yillik Solution Architect siz (.NET/C#).
