@@ -1,19 +1,23 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using AgentFarm.Agents.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace AgentFarm.Agents.Services;
 
-/// <summary>
-/// OmniRoute (OpenAI format) va to'g'ridan Anthropic API ni qo'llab-quvvatlaydi.
-/// </summary>
 public sealed class ClaudeApiClient
 {
     private readonly HttpClient               _http;
     private readonly AnthropicOptions         _options;
     private readonly ILogger<ClaudeApiClient> _logger;
+
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        PropertyNamingPolicy   = JsonNamingPolicy.SnakeCaseLower
+    };
 
     public ClaudeApiClient(
         HttpClient                 http,
@@ -53,13 +57,13 @@ public sealed class ClaudeApiClient
         string userMessage,
         CancellationToken ct)
     {
-        // To'liq URL — BaseUrl ichida /v1 bor, shuning uchun to'g'ridan ishlatamiz
         var url = _options.BaseUrl.TrimEnd('/') + "/chat/completions";
 
         var body = new
         {
             model      = _options.Model,
             max_tokens = _options.MaxTokens,
+            thinking   = new { type = "disabled" },
             messages   = new[]
             {
                 new { role = "system", content = systemPrompt },
@@ -67,9 +71,10 @@ public sealed class ClaudeApiClient
             }
         };
 
-        _logger.LogDebug("OmniRoute ga so'rov: {Url}, Model={Model}", url, _options.Model);
+        _logger.LogDebug("OmniRoute: {Url}, Model={Model}", url, _options.Model);
 
-        var response = await _http.PostAsJsonAsync(url, body, ct);
+        using var reqContent = JsonContent.Create(body, options: JsonOpts);
+        var response = await _http.PostAsync(url, reqContent, ct);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -80,7 +85,7 @@ public sealed class ClaudeApiClient
 
         var json = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
 
-        var content   = json.GetProperty("choices")[0]
+        var text      = json.GetProperty("choices")[0]
                            .GetProperty("message")
                            .GetProperty("content")
                            .GetString() ?? "";
@@ -88,7 +93,7 @@ public sealed class ClaudeApiClient
         var outputTok = json.GetProperty("usage").GetProperty("completion_tokens").GetInt32();
 
         _logger.LogDebug("OmniRoute javob. Tokenlar={Total}", inputTok + outputTok);
-        return (content, inputTok + outputTok);
+        return (text, inputTok + outputTok);
     }
 
     private async Task<(string Content, int TokensUsed)> CompleteAnthropicFormatAsync(
@@ -109,9 +114,10 @@ public sealed class ClaudeApiClient
             }
         };
 
-        _logger.LogDebug("Anthropic ga so'rov: {Url}, Model={Model}", url, _options.Model);
+        _logger.LogDebug("Anthropic: {Url}, Model={Model}", url, _options.Model);
 
-        var response = await _http.PostAsJsonAsync(url, body, ct);
+        using var reqContent = JsonContent.Create(body, options: JsonOpts);
+        var response = await _http.PostAsync(url, reqContent, ct);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -122,11 +128,11 @@ public sealed class ClaudeApiClient
 
         var json = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
 
-        var content   = json.GetProperty("content")[0].GetProperty("text").GetString() ?? "";
+        var text      = json.GetProperty("content")[0].GetProperty("text").GetString() ?? "";
         var inputTok  = json.GetProperty("usage").GetProperty("input_tokens").GetInt32();
         var outputTok = json.GetProperty("usage").GetProperty("output_tokens").GetInt32();
 
         _logger.LogDebug("Anthropic javob. Tokenlar={Total}", inputTok + outputTok);
-        return (content, inputTok + outputTok);
+        return (text, inputTok + outputTok);
     }
 }
