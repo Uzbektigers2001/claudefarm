@@ -38,5 +38,7 @@ public sealed class ReviewerAgent : AgentBase
         
         ## Xavfsizlik
         (agar muammo bo'lsa)
+
+        Javobni qisqa va aniq ber. Faqat muhim qismlarni yoz. Ortiqcha tushuntirish yozma.
         """;
 }

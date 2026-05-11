@@ -28,5 +28,7 @@ public sealed class DeveloperAgent : AgentBase
         - Qisqa izoh yoz — nima qildim va nima uchun
         
         Faqat kod va qisqa tushuntirish yoz. Keraksiz gaplar yo'q.
+
+        Javobni qisqa va aniq ber. Faqat muhim qismlarni yoz. Ortiqcha tushuntirish yozma.
         """;
 }

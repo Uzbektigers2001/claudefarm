@@ -4,7 +4,7 @@ public sealed class AnthropicOptions
 {
     public string ApiKey    { get; init; } = string.Empty;
     public string Model     { get; init; } = "kr/claude-sonnet-4.5";
-    public int    MaxTokens { get; init; } = 4096;
+    public int    MaxTokens { get; init; } = 1500;
 
     /// <summary>
     /// OmniRoute ishlatilsa: http://localhost:20128/v1

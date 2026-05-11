@@ -193,13 +193,28 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
         }
     }
 
+    private static string CleanJson(string raw)
+    {
+        // markdown code block larni olib tashlaymiz
+        var cleaned = raw.Trim();
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"```json\s*", "");
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"```\s*", "");
+        // JSON ni topib olamiz
+        var start = cleaned.IndexOf('{');
+        var end   = cleaned.LastIndexOf('}');
+        if (start >= 0 && end > start)
+            cleaned = cleaned[start..(end + 1)];
+        return cleaned;
+    }
+
     private async Task<List<SubTask>?> ParseSubtasksWithRetry(string json, AgentRequest request, CancellationToken ct)
     {
         for (int attempt = 1; attempt <= 3; attempt++)
         {
             try
             {
-                var doc = JsonDocument.Parse(json);
+                var cleanedJson = CleanJson(json);
+                var doc = JsonDocument.Parse(cleanedJson);
                 var subtasksArray = doc.RootElement.GetProperty("subtasks");
 
                 var result = new List<SubTask>();
@@ -240,7 +255,14 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
             }
         }
 
-        return null;
+        // Fallback: 3 ta teng subtask
+        _logger.LogWarning("JSON parse muvaffaqiyatsiz, fallback subtasklar yaratildi");
+        return new List<SubTask>
+        {
+            new() { AssignedTo = AgentRole.Developer1, Description = $"{request.Prompt} — 1-qism", Status = SubTaskStatus.Pending },
+            new() { AssignedTo = AgentRole.Developer2, Description = $"{request.Prompt} — 2-qism", Status = SubTaskStatus.Pending },
+            new() { AssignedTo = AgentRole.Developer3, Description = $"{request.Prompt} — 3-qism", Status = SubTaskStatus.Pending }
+        };
     }
 
     private DeveloperAgent GetDeveloperAgent(AgentRole role) => role switch

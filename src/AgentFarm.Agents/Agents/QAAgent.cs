@@ -33,6 +33,8 @@ public sealed class QAAgent : AgentBase
         
         ## Testlar
         (unit test kodi)
+
+        Javobni qisqa va aniq ber. Faqat muhim qismlarni yoz. Ortiqcha tushuntirish yozma.
         """;
 
     protected override string BuildUserMessage(AgentRequest request, string? previousContext)
