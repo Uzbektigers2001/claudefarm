@@ -135,7 +135,7 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
                 var subtask = new SubTask
                 {
                     SessionId = session.SessionId,
-                    AssignedTo = file.AssignTo,
+                    AssignedTo = ParseRole(file.AssignTo),
                     Instance = file.Instance,
                     Description = file.Description,
                     FilePath = file.Path,
@@ -482,6 +482,19 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
 
         return false;
     }
+
+    private static AgentRole ParseRole(string role) => role.ToLower() switch
+    {
+        "backend"         => AgentRole.Backend,
+        "frontend"        => AgentRole.Frontend,
+        "devops"          => AgentRole.DevOps,
+        "qa"              => AgentRole.QA,
+        "reviewer"        => AgentRole.Reviewer,
+        "security"        => AgentRole.Security,
+        "databaseadmin"   => AgentRole.DatabaseAdmin,
+        "businessanalyst" => AgentRole.BusinessAnalyst,
+        _                 => AgentRole.Backend
+    };
 
     private AgentBase? GetAgentForRole(AgentRole role) => role switch
     {

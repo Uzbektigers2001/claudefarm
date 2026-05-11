@@ -1,5 +1,3 @@
-using AgentFarm.Core.Enums;
-
 namespace AgentFarm.Core.Models;
 
 /// <summary>
@@ -32,7 +30,7 @@ public class ArchitectFile
 {
     public string Path { get; set; } = string.Empty;
     public string Project { get; set; } = string.Empty;
-    public AgentRole AssignTo { get; set; }
+    public string AssignTo { get; set; } = string.Empty;
     public int Instance { get; set; } = 1;
     public string Description { get; set; } = string.Empty;
 }
