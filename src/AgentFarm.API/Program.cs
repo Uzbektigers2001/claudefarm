@@ -1,3 +1,6 @@
+using AgentFarm.Agents.Agents;
+using AgentFarm.Agents.Options;
+using AgentFarm.Agents.Services;
 using AgentFarm.Bot.Interfaces;
 using AgentFarm.Bot.Services;
 using Telegram.Bot;
@@ -15,13 +18,23 @@ builder.Services.AddSingleton<ITelegramMessageSender, TelegramMessageSender>();
 builder.Services.AddSingleton<CommandRouter>();
 builder.Services.AddSingleton<UpdateHandler>();
 
-// --- Agent Pipeline ---
-// AgentFarm.Agents dan keladi (keyingi qadam)
+// --- Anthropic Claude API ---
+builder.Services.Configure<AnthropicOptions>(
+    builder.Configuration.GetSection("Anthropic"));
+
+builder.Services.AddHttpClient<ClaudeApiClient>();
+
+// --- Agentlar ---
+builder.Services.AddSingleton<DeveloperAgent>();
+builder.Services.AddSingleton<QAAgent>();
+builder.Services.AddSingleton<ReviewerAgent>();
+
+// --- Pipeline ---
 builder.Services.AddSingleton<IAgentPipelineRunner, AgentPipelineRunner>();
 
-// --- HTTP ---
-builder.Services.AddHttpClient();
-builder.Services.AddControllers();
+// --- HTTP + Controllers ---
+builder.Services.AddControllers()
+    .AddNewtonsoftJson(); // Telegram.Bot uchun
 
 var app = builder.Build();
 
