@@ -23,6 +23,15 @@ public class AgentRequest
     /// <summary>Qo'shimcha kontekst (oldingi kod, eslatmalar va h.k.).</summary>
     public string? Context { get; init; }
 
+    /// <summary>Qaysi faylni yozish kerak (file-aware agentlar uchun).</summary>
+    public string? FilePath { get; init; }
+
+    /// <summary>Namespace (file-aware agentlar uchun).</summary>
+    public string? Namespace { get; init; }
+
+    /// <summary>Loyiha konteksti - boshqa fayllar ro'yxati.</summary>
+    public string? ProjectContext { get; init; }
+
     /// <summary>Vazifa yaratilgan vaqt.</summary>
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
 }

@@ -37,8 +37,8 @@ builder.Services.AddSingleton<ProjectRepoService>();
 // --- Session Store ---
 builder.Services.AddSingleton<InMemorySessionStore>();
 
-// --- Agentlar (Dynamic Role Selection) ---
-builder.Services.AddSingleton<OrchestratorAgent>();
+// --- Agentlar (Production-ready: Architect + Dynamic Role Selection) ---
+builder.Services.AddSingleton<ArchitectAgent>();
 builder.Services.AddSingleton<BackendAgent>();
 builder.Services.AddSingleton<FrontendAgent>();
 builder.Services.AddSingleton<DevOpsAgent>();
@@ -48,10 +48,14 @@ builder.Services.AddSingleton<DatabaseAdminAgent>();
 builder.Services.AddSingleton<QAAgent>();
 builder.Services.AddSingleton<ReviewerAgent>();
 
-// --- Pipeline (Orchestrator arxitekturasi) ---
+// --- Project Builder & Code Writer Services ---
+builder.Services.AddSingleton<ProjectBuilderService>();
+builder.Services.AddSingleton<CodeWriterService>();
+
+// --- Pipeline (Production-ready: Architect + Real .NET Projects) ---
 builder.Services.AddSingleton<IAgentPipelineRunner>(sp =>
 {
-    var orchestrator     = sp.GetRequiredService<OrchestratorAgent>();
+    var architect        = sp.GetRequiredService<ArchitectAgent>();
     var backend          = sp.GetRequiredService<BackendAgent>();
     var frontend         = sp.GetRequiredService<FrontendAgent>();
     var devops           = sp.GetRequiredService<DevOpsAgent>();
@@ -60,6 +64,8 @@ builder.Services.AddSingleton<IAgentPipelineRunner>(sp =>
     var databaseAdmin    = sp.GetRequiredService<DatabaseAdminAgent>();
     var qa               = sp.GetRequiredService<QAAgent>();
     var reviewer         = sp.GetRequiredService<ReviewerAgent>();
+    var projectBuilder   = sp.GetRequiredService<ProjectBuilderService>();
+    var codeWriter       = sp.GetRequiredService<CodeWriterService>();
     var sessionStore     = sp.GetRequiredService<InMemorySessionStore>();
     var sender           = sp.GetRequiredService<ITelegramMessageSender>();
     var gitHubService    = sp.GetRequiredService<GitHubService>();
@@ -67,9 +73,9 @@ builder.Services.AddSingleton<IAgentPipelineRunner>(sp =>
     var logger           = sp.GetRequiredService<ILogger<OrchestratorPipelineRunner>>();
 
     return new OrchestratorPipelineRunner(
-        orchestrator, backend, frontend, devops, businessAnalyst,
-        security, databaseAdmin, qa, reviewer, sessionStore, sender,
-        gitHubService, projectRepoService, logger);
+        architect, backend, frontend, devops, businessAnalyst,
+        security, databaseAdmin, qa, reviewer, projectBuilder, codeWriter,
+        sessionStore, sender, gitHubService, projectRepoService, logger);
 });
 
 // --- HTTP ---

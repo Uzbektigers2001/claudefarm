@@ -13,6 +13,21 @@ public class SubTask
     public SubTaskStatus Status { get; set; } = SubTaskStatus.Pending;
 
     /// <summary>
+    /// Qaysi faylni yozish kerak (masalan: src/HelloWorldApi.API/Controllers/HelloController.cs)
+    /// </summary>
+    public string? FilePath { get; set; }
+
+    /// <summary>
+    /// Namespace (masalan: HelloWorldApi.API.Controllers)
+    /// </summary>
+    public string? Namespace { get; set; }
+
+    /// <summary>
+    /// Loyiha konteksti - boshqa fayllar ro'yxati
+    /// </summary>
+    public string? ProjectContext { get; set; }
+
+    /// <summary>
     /// Display name: "Backend-1", "Frontend-2", etc.
     /// </summary>
     public string DisplayName => $"{AssignedTo}-{Instance}";

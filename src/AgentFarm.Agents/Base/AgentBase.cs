@@ -57,6 +57,30 @@ public abstract class AgentBase
         var sb = new StringBuilder();
         sb.AppendLine(request.Prompt);
 
+        // File-aware: FilePath, Namespace, ProjectContext
+        if (!string.IsNullOrWhiteSpace(request.FilePath))
+        {
+            sb.AppendLine();
+            sb.AppendLine($"## FAYL: {request.FilePath}");
+            if (!string.IsNullOrWhiteSpace(request.Namespace))
+            {
+                sb.AppendLine($"Namespace: {request.Namespace}");
+            }
+            sb.AppendLine();
+            sb.AppendLine("Faqat shu fayl uchun kod yoz. Boshqa hech narsa yo'q.");
+            sb.AppendLine("Kod to'g'ri compile bo'lishi shart (using, namespace, class, method).");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ProjectContext))
+        {
+            sb.AppendLine();
+            sb.AppendLine("## Loyiha strukturasi");
+            var ctx = request.ProjectContext.Length > 1000
+                ? request.ProjectContext[..1000] + "\n...[qisqartirildi]"
+                : request.ProjectContext;
+            sb.AppendLine(ctx);
+        }
+
         if (!string.IsNullOrWhiteSpace(previousContext))
         {
             sb.AppendLine();
@@ -87,6 +111,7 @@ public abstract class AgentBase
         AgentRole.BusinessAnalyst => "Business Analyst",
         AgentRole.Security        => "Security",
         AgentRole.DatabaseAdmin   => "Database Admin",
+        AgentRole.Architect       => "Architect",
         AgentRole.Orchestrator    => "Orchestrator",
         _                         => Role.ToString()
     };

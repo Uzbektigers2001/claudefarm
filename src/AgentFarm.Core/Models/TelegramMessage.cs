@@ -31,6 +31,7 @@ public class TelegramMessage
         AgentRole.BusinessAnalyst => "Business Analyst",
         AgentRole.Security        => "Security",
         AgentRole.DatabaseAdmin   => "Database Admin",
+        AgentRole.Architect       => "Architect",
         AgentRole.Orchestrator    => "AgentFarm",
         _                         => role.ToString()
     };

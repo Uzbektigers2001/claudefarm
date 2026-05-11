@@ -3,6 +3,7 @@ namespace AgentFarm.Core.Enums;
 public enum AgentRole
 {
     Orchestrator,
+    Architect,
     Backend,
     Frontend,
     DevOps,
