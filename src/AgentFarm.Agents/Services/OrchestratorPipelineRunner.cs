@@ -239,14 +239,19 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
 
             sw.Stop();
 
-            var successful = responses.Count(r => r.Status == AgentStatus.Completed);
-            var total = responses.Count;
-
-            // Yakuniy xabar: PR link bilan
-            var finalMessage = $"✅ Tugadi: {successful} agent | {(int)sw.Elapsed.TotalSeconds}s";
+            // Yakuniy xabar
+            string finalMessage;
             if (!string.IsNullOrWhiteSpace(session.PullRequestUrl))
             {
-                finalMessage += $" | PR: {session.PullRequestUrl}";
+                finalMessage = $"✅ Tugadi | PR: {session.PullRequestUrl}";
+            }
+            else if (!string.IsNullOrWhiteSpace(session.BranchName))
+            {
+                finalMessage = $"✅ Tugadi | Branch: {session.BranchName}";
+            }
+            else
+            {
+                finalMessage = "✅ Tugadi";
             }
 
             await _sender.SendTextAsync(request.ChatId, finalMessage, useMarkdown: false, ct);

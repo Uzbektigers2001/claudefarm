@@ -14,8 +14,6 @@ public abstract class AgentBase
     protected readonly ITelegramMessageSender Sender;
     protected readonly ILogger                Logger;
 
-    private const int TelegramMaxLength = 4000;
-
     protected AgentBase(ClaudeApiClient apiClient, ITelegramMessageSender sender, ILogger logger)
     {
         ApiClient = apiClient;
@@ -41,7 +39,7 @@ public abstract class AgentBase
             var (content, tokens) = await ApiClient.CompleteAsync(SystemPrompt, userMessage, MaxTokensOverride, ct);
             sw.Stop();
 
-            await SendChunkedAsync(request.ChatId, content, ct);
+            await Sender.SendTextAsync(request.ChatId, $"✅ [{RoleLabel}] tugadi", useMarkdown: false, ct);
 
             return AgentResponse.Success(request.TaskId, Role, content, tokens, sw.Elapsed);
         }
@@ -77,47 +75,6 @@ public abstract class AgentBase
         }
 
         return sb.ToString();
-    }
-
-    private async Task SendChunkedAsync(long chatId, string content, CancellationToken ct)
-    {
-        if (content.Length <= TelegramMaxLength)
-        {
-            await Sender.SendMessageAsync(new TelegramMessage { ChatId = chatId, Text = content, SenderRole = Role, UseMarkdown = true }, ct);
-            return;
-        }
-
-        var chunks = SplitIntoChunks(content, TelegramMaxLength);
-        for (var i = 0; i < chunks.Count; i++)
-        {
-            var isFirst = i == 0;
-            await Sender.SendMessageAsync(new TelegramMessage
-            {
-                ChatId      = chatId,
-                Text        = isFirst ? chunks[i] : $"({i + 1}/{chunks.Count})\n{chunks[i]}",
-                SenderRole  = isFirst ? Role : null,
-                UseMarkdown = false
-            }, ct);
-            if (i < chunks.Count - 1) await Task.Delay(300, ct);
-        }
-    }
-
-    private static List<string> SplitIntoChunks(string text, int chunkSize)
-    {
-        var chunks = new List<string>();
-        var i = 0;
-        while (i < text.Length)
-        {
-            var len = Math.Min(chunkSize, text.Length - i);
-            if (i + len < text.Length)
-            {
-                var lastNewline = text.LastIndexOf('\n', i + len, len);
-                if (lastNewline > i) len = lastNewline - i;
-            }
-            chunks.Add(text.Substring(i, len));
-            i += len;
-        }
-        return chunks;
     }
 
     private string RoleLabel => Role switch
