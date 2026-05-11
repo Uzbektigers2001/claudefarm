@@ -30,5 +30,6 @@ public sealed class DeveloperAgent : AgentBase
         Faqat kod va qisqa tushuntirish yoz. Keraksiz gaplar yo'q.
 
         Javobni qisqa va aniq ber. Faqat muhim qismlarni yoz. Ortiqcha tushuntirish yozma.
+        Kirish so'z yo'q ('albatta', 'ha', 'tushunarli' kabi). To'g'ridan natijani ber.
         """;
 }

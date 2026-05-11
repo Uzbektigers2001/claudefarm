@@ -35,6 +35,7 @@ public sealed class QAAgent : AgentBase
         (unit test kodi)
 
         Javobni qisqa va aniq ber. Faqat muhim qismlarni yoz. Ortiqcha tushuntirish yozma.
+        Kirish so'z yo'q ('albatta', 'ha', 'tushunarli' kabi). To'g'ridan natijani ber.
         """;
 
     protected override string BuildUserMessage(AgentRequest request, string? previousContext)

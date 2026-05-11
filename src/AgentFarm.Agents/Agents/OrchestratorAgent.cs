@@ -16,6 +16,9 @@ public sealed class OrchestratorAgent : AgentBase
 
     public override AgentRole Role => AgentRole.Orchestrator;
 
+    // Orchestrator faqat JSON qaytaradi — 400 token yetarli
+    protected override int? MaxTokensOverride => 400;
+
     protected override string SystemPrompt => """
         Sen Project Manager siz. Vazifani 2-3 qismga bo'lib JSON qaytarasan.
 

@@ -26,6 +26,9 @@ public abstract class AgentBase
     public abstract AgentRole Role { get; }
     protected abstract string SystemPrompt { get; }
 
+    /// <summary>Agentga xos token chegarasi. null bo'lsa options dan oladi.</summary>
+    protected virtual int? MaxTokensOverride => null;
+
     public async Task<AgentResponse> RunAsync(AgentRequest request, string? previousContext = null, CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
@@ -35,7 +38,7 @@ public abstract class AgentBase
         try
         {
             var userMessage = BuildUserMessage(request, previousContext);
-            var (content, tokens) = await ApiClient.CompleteAsync(SystemPrompt, userMessage, ct);
+            var (content, tokens) = await ApiClient.CompleteAsync(SystemPrompt, userMessage, MaxTokensOverride, ct);
             sw.Stop();
 
             await SendChunkedAsync(request.ChatId, content, ct);
@@ -60,7 +63,10 @@ public abstract class AgentBase
         {
             sb.AppendLine();
             sb.AppendLine("## Oldingi agent natijasi");
-            sb.AppendLine(previousContext);
+            var ctx = previousContext.Length > 2000
+                ? previousContext[..2000] + "\n...[qisqartirildi]"
+                : previousContext;
+            sb.AppendLine(ctx);
         }
 
         if (!string.IsNullOrWhiteSpace(request.Context))
