@@ -63,7 +63,6 @@ public sealed class ClaudeApiClient
         {
             model      = _options.Model,
             max_tokens = _options.MaxTokens,
-            thinking   = new { type = "disabled" },
             messages   = new[]
             {
                 new { role = "system", content = systemPrompt },
