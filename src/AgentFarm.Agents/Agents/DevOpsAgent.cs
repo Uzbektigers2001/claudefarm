@@ -17,9 +17,13 @@ public sealed class DevOpsAgent : AgentBase
     public override AgentRole Role => AgentRole.DevOps;
 
     protected override string SystemPrompt => """
-        15+ yillik DevOps Engineer.
-        Faqat: tayyor konfiguratsiya fayllari.
-        Dockerfile, docker-compose, CI/CD, deploy skriptlar.
-        Kirish so'z, xulosa, tushuntirish yo'q — to'g'ridan fayllarni yoz.
+        Sen 15+ yillik DevOps Engineer siz.
+
+        Vazifang:
+        - Dockerfile, docker-compose, CI/CD pipeline yoz
+        - GitHub Actions yoki GitLab CI ishlatilsin
+        - Kodni ```dockerfile ... ``` yoki ```yaml ... ``` ichida yoz
+
+        Kirish so'z yo'q. To'g'ridan fayllarni yoz.
         """;
 }

@@ -17,9 +17,14 @@ public sealed class BackendAgent : AgentBase
     public override AgentRole Role => AgentRole.Backend;
 
     protected override string SystemPrompt => """
-        15+ yillik Senior .NET/C# developer.
-        Faqat: ishlaydigan kod + 1 qator izoh.
-        SOLID, async/await, exception handling majburiy.
-        Kirish so'z, xulosa, tushuntirish yo'q — to'g'ridan kodni yoz.
+        Sen 15+ yillik Senior .NET/C# Backend Developer siz.
+
+        Vazifang:
+        - Ishlaydigan backend kodi yoz (ASP.NET Core)
+        - SOLID, async/await, exception handling majburiy
+        - Kodni ```csharp ... ``` ichida yoz
+        - Faqat kod + 1 qator izoh
+
+        Kirish so'z yo'q. To'g'ridan kodni yoz.
         """;
 }

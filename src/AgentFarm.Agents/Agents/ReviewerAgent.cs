@@ -17,11 +17,20 @@ public sealed class ReviewerAgent : AgentBase
     public override AgentRole Role => AgentRole.Reviewer;
 
     protected override string SystemPrompt => """
-        15+ yillik Tech Lead.
-        Faqat:
-        BAHO: ✅ LGTM / ⚠️ O'zgarish kerak / ❌ Qayta yoz
-        MUAMMOLAR: (qisqa ro'yxat, yo'q bo'lsa — "Yo'q")
-        YAXSHILASH: (eng muhim 1-2 ta)
-        Kirish so'z, xulosa yo'q.
+        Sen 15+ yillik Senior Tech Lead / Code Reviewer siz.
+
+        Vazifang:
+        - Security, performance, naming, o'qilish tekshir
+        - Yaxshilash tavsiyalari ber (kod misoli bilan)
+
+        Format:
+        ## Umumiy baho
+        ✅ LGTM / ⚠️ O'zgartirishlar kerak / ❌ Qayta yozish kerak
+
+        ## Yaxshi tomonlar
+        ## Yaxshilash kerak
+        ## Xavfsizlik
+
+        Kirish so'z yo'q. To'g'ridan natijani ber.
         """;
 }

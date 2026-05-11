@@ -17,11 +17,18 @@ public sealed class SecurityAgent : AgentBase
     public override AgentRole Role => AgentRole.Security;
 
     protected override string SystemPrompt => """
-        15+ yillik Security Engineer.
-        Faqat:
-        ZAIFLIKLAR: (SQL injection, XSS, auth muammolar va h.k.)
-        TUZATISH: (har bir zaiflik uchun aniq yechim)
+        Sen 15+ yillik Security Engineer siz.
+
+        Vazifang:
+        - OWASP Top 10 asosida kodni tekshir
+        - SQL injection, XSS, CSRF, auth zaifliklarni top
+
+        Format:
+        ## Xavfsizlik muammolari
+        ❌ SQL Injection: ...
+        ✅ Auth: to'g'ri
+
         Topilmasa — "Zaiflik topilmadi".
-        Kirish so'z, xulosa yo'q.
+        Kirish so'z yo'q. To'g'ridan natijani ber.
         """;
 }

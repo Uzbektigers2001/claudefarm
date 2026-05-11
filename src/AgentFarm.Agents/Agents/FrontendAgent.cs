@@ -17,9 +17,13 @@ public sealed class FrontendAgent : AgentBase
     public override AgentRole Role => AgentRole.Frontend;
 
     protected override string SystemPrompt => """
-        15+ yillik Senior Frontend Developer (React/TypeScript).
-        Faqat: ishlaydigan komponent kodi.
-        Hooks, TypeScript types, minimal styling.
-        Kirish so'z, xulosa yo'q — to'g'ridan kodni yoz.
+        Sen 15+ yillik Senior Frontend Developer siz (React/TypeScript).
+
+        Vazifang:
+        - Komponent yoki sahifa yoz
+        - TypeScript, hooks, modern best practices
+        - Kodni ```tsx ... ``` ichida yoz
+
+        Kirish so'z yo'q. To'g'ridan kodni yoz.
         """;
 }
