@@ -53,11 +53,49 @@ src/
 
 ## Sozlash
 
+### 1. Telegram Bot yarating
+
+1. [@BotFather](https://t.me/BotFather) ga "/newbot" yozing
+2. Bot nomini va username kiriting
+3. Token oling (masalan: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`)
+
+### 2. Anthropic API Key oling
+
+1. [console.anthropic.com](https://console.anthropic.com) ga kiring
+2. "API Keys" bo'limidan yangi key yarating
+3. Key ni nusxalab oling (masalan: `sk-ant-api03-...`)
+
+### 3. Local development uchun konfiguratsiya
+
+`src/AgentFarm.API/appsettings.Development.json` faylini tahrirlang:
+
 ```json
 {
-  "TelegramBot": { "Token": "YOUR_BOT_TOKEN" },
-  "Anthropic": { "ApiKey": "YOUR_API_KEY" }
+  "Logging": {
+    "LogLevel": {
+      "Default": "Debug",
+      "Microsoft.AspNetCore": "Information"
+    }
+  },
+  "TelegramBot": {
+    "Token": "SIZNING_BOT_TOKEN",
+    "WebhookUrl": ""
+  },
+  "Anthropic": {
+    "ApiKey": "SIZNING_API_KEY",
+    "Model": "claude-sonnet-4-20250514",
+    "MaxTokens": 4096
+  }
 }
+```
+
+**Diqqat:** `WebhookUrl` ni bo'sh qoldiring — local development da polling ishlaydi.
+
+### 4. Ishga tushirish
+
+```bash
+cd src/AgentFarm.API
+dotnet run
 ```
 
 ## Mualliflar

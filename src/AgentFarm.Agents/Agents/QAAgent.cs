@@ -35,10 +35,10 @@ public sealed class QAAgent : AgentBase
         (unit test kodi)
         """;
 
-    protected override string BuildUserMessage(AgentRequest request)
+    protected override string BuildUserMessage(AgentRequest request, string? previousContext)
     {
         // QA agent kontekstda Developer kodi bo'lsa uni ham ko'radi
-        var base_msg = base.BuildUserMessage(request);
-        return $"Quyidagi vazifa/kod uchun QA qil:\n\n{base_msg}";
+        var baseMsg = base.BuildUserMessage(request, previousContext);
+        return $"Quyidagi vazifa/kod uchun QA qil:\n\n{baseMsg}";
     }
 }

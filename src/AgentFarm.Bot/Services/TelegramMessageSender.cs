@@ -21,11 +21,21 @@ public sealed class TelegramMessageSender : ITelegramMessageSender
     {
         try
         {
-            await _botClient.SendMessage(
-                chatId:            message.ChatId,
-                text:              message.FormattedText,
-                parseMode:         message.UseMarkdown ? ParseMode.MarkdownV2 : null,
-                cancellationToken: ct);
+            if (message.UseMarkdown)
+            {
+                await _botClient.SendMessage(
+                    chatId:            message.ChatId,
+                    text:              message.FormattedText,
+                    parseMode:         ParseMode.MarkdownV2,
+                    cancellationToken: ct);
+            }
+            else
+            {
+                await _botClient.SendMessage(
+                    chatId:            message.ChatId,
+                    text:              message.FormattedText,
+                    cancellationToken: ct);
+            }
         }
         catch (Exception ex)
         {
