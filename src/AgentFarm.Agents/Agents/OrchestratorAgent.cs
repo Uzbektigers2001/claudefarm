@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using AgentFarm.Agents.Base;
 using AgentFarm.Agents.Services;
 using AgentFarm.Bot.Interfaces;
@@ -40,6 +41,76 @@ public sealed class OrchestratorAgent : AgentBase
             sw.Stop();
             Logger.LogError(ex, "{Role} agent xatosi. TaskId={TaskId}", Role, request.TaskId);
             return AgentResponse.Failure(request.TaskId, Role, ex.Message, sw.Elapsed);
+        }
+    }
+
+    private const string DecideSystemPrompt = """
+        Sen 15+ yillik CTO siz.
+        Tugagan agent natijasini tahlil qilib qaror qabul qil.
+        FAQAT JSON qaytart, boshqa hech narsa yo'q:
+        {
+          "decision": "continue",
+          "targetRole": "Backend",
+          "reason": "...",
+          "instructions": "..."
+        }
+
+        QAROR QOIDALARI:
+        continue       — javob to'liq va sifatli (100+ belgi, .NET kod bor)
+        retry_current  — javob bo'sh, .NET emas, yoki sifatsiz
+        retry_previous — arxitektura yoki talab noto'g'ri chiqdi
+        escalate       — 3+ marta retry dan keyin hal bo'lmadi
+
+        targetRole: qaysi agent keyingi ishlaydi
+        """;
+
+    public async Task<OrchestratorDecision> DecideAsync(
+        AgentRole completedRole,
+        string agentOutput,
+        ProjectSession session,
+        CancellationToken ct = default)
+    {
+        var userMessage =
+            $"Tugagan agent: {completedRole}\n" +
+            $"Agent natijasi (birinchi 500 belgi):\n" +
+            $"{agentOutput[..Math.Min(500, agentOutput.Length)]}\n\n" +
+            $"Session holati:\n" +
+            $"- Iteratsiyalar: {session.CurrentIteration}\n" +
+            $"- Yozilgan fayllar: {session.Files.Count} ta\n" +
+            $"- Oxirgi build: {(session.BuildErrors.Any() ? "XATO" : "OK")}";
+
+        try
+        {
+            var (json, _) = await ApiClient.CompleteAsync(DecideSystemPrompt, userMessage, 300, ct);
+            return ParseDecision(json);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "DecideAsync xatosi, default Continue qaytarilmoqda");
+            return new OrchestratorDecision { Decision = "continue", Reason = "parse xatosi" };
+        }
+    }
+
+    private static OrchestratorDecision ParseDecision(string raw)
+    {
+        try
+        {
+            var cleaned = raw.Trim();
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"```json\s*", "");
+            cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"```\s*", "");
+            var start = cleaned.IndexOf('{');
+            var end   = cleaned.LastIndexOf('}');
+            if (start >= 0 && end > start)
+                cleaned = cleaned[start..(end + 1)];
+
+            var result = JsonSerializer.Deserialize<OrchestratorDecision>(cleaned,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            return result ?? new OrchestratorDecision { Decision = "continue", Reason = "null result" };
+        }
+        catch
+        {
+            return new OrchestratorDecision { Decision = "continue", Reason = "parse xatosi" };
         }
     }
 

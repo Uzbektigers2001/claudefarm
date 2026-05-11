@@ -36,8 +36,10 @@ builder.Services.AddSingleton<ProjectRepoService>();
 
 // --- Session Store ---
 builder.Services.AddSingleton<InMemorySessionStore>();
+builder.Services.AddSingleton<IEscalationStore, EscalationStore>();
 
 // --- Agentlar ---
+builder.Services.AddSingleton<OrchestratorAgent>();
 builder.Services.AddSingleton<PlannerAgent>();
 builder.Services.AddSingleton<AnalystAgent>();
 builder.Services.AddSingleton<ArchitectAgent>();
@@ -53,11 +55,11 @@ builder.Services.AddSingleton<ReviewerAgent>();
 // --- Project Builder & Code Writer Services ---
 builder.Services.AddSingleton<ProjectBuilderService>();
 builder.Services.AddSingleton<CodeWriterService>();
-builder.Services.AddSingleton<OrchestratorDecision>();
 
 // --- Pipeline ---
 builder.Services.AddSingleton<IAgentPipelineRunner>(sp =>
     new OrchestratorPipelineRunner(
+        sp.GetRequiredService<OrchestratorAgent>(),
         sp.GetRequiredService<PlannerAgent>(),
         sp.GetRequiredService<AnalystAgent>(),
         sp.GetRequiredService<ArchitectAgent>(),
@@ -73,9 +75,9 @@ builder.Services.AddSingleton<IAgentPipelineRunner>(sp =>
         sp.GetRequiredService<CodeWriterService>(),
         sp.GetRequiredService<InMemorySessionStore>(),
         sp.GetRequiredService<ITelegramMessageSender>(),
+        sp.GetRequiredService<IEscalationStore>(),
         sp.GetRequiredService<GitHubService>(),
         sp.GetRequiredService<ProjectRepoService>(),
-        sp.GetRequiredService<OrchestratorDecision>(),
         sp.GetRequiredService<ILogger<OrchestratorPipelineRunner>>()));
 
 // --- HTTP ---

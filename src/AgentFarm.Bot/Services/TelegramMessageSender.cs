@@ -2,7 +2,6 @@ using AgentFarm.Bot.Interfaces;
 using AgentFarm.Core.Models;
 using Microsoft.Extensions.Logging;
 using Telegram.Bot;
-using Telegram.Bot.Types.Enums;
 
 namespace AgentFarm.Bot.Services;
 
@@ -21,10 +20,10 @@ public sealed class TelegramMessageSender : ITelegramMessageSender
     {
         try
         {
-            // Har doim plain text (ParseMode = null)
+            var text = message.FormattedText.Replace("\\", "");
             await _botClient.SendMessage(
                 chatId:            message.ChatId,
-                text:              message.FormattedText,
+                text:              text,
                 cancellationToken: ct);
         }
         catch (Exception ex)

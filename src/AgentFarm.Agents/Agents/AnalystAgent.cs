@@ -18,6 +18,10 @@ public sealed class AnalystAgent : AgentBase
     public override bool      IsEnabled => true;
 
     protected override string SystemPrompt => """
+        Loyiha: .NET 8, ASP.NET Core, Clean Architecture.
+        Faqat .NET/C# texnologiyalar ishlatilsin.
+        Node.js, Python, Go — hech qachon.
+
         Sen texnik analitiksan.
 
         Vazifang:

@@ -13,6 +13,7 @@ namespace AgentFarm.Agents.Services;
 
 public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
 {
+    private readonly OrchestratorAgent                    _orchestrator;
     private readonly PlannerAgent                         _planner;
     private readonly AnalystAgent                         _analyst;
     private readonly ArchitectAgent                       _architect;
@@ -28,9 +29,9 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
     private readonly CodeWriterService                    _codeWriter;
     private readonly InMemorySessionStore                 _sessionStore;
     private readonly ITelegramMessageSender               _sender;
+    private readonly IEscalationStore                     _escalationStore;
     private readonly GitHubService                        _gitHubService;
     private readonly ProjectRepoService                   _projectRepoService;
-    private readonly OrchestratorDecision                 _decision;
     private readonly ILogger<OrchestratorPipelineRunner>  _logger;
 
     private const int MaxPlannerIterations   = 2;
@@ -41,6 +42,7 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
     private const int MaxQaIterations        = 3;
 
     public OrchestratorPipelineRunner(
+        OrchestratorAgent       orchestrator,
         PlannerAgent            planner,
         AnalystAgent            analyst,
         ArchitectAgent          architect,
@@ -56,11 +58,12 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
         CodeWriterService       codeWriter,
         InMemorySessionStore    sessionStore,
         ITelegramMessageSender  sender,
+        IEscalationStore        escalationStore,
         GitHubService           gitHubService,
         ProjectRepoService      projectRepoService,
-        OrchestratorDecision    decision,
         ILogger<OrchestratorPipelineRunner> logger)
     {
+        _orchestrator       = orchestrator;
         _planner            = planner;
         _analyst            = analyst;
         _architect          = architect;
@@ -76,9 +79,9 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
         _codeWriter         = codeWriter;
         _sessionStore       = sessionStore;
         _sender             = sender;
+        _escalationStore    = escalationStore;
         _gitHubService      = gitHubService;
         _projectRepoService = projectRepoService;
-        _decision           = decision;
         _logger             = logger;
     }
 
@@ -102,92 +105,216 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
 
             // ===== BOSQICH 1: PLANNER =====
             string plannerOutput = string.Empty;
-            for (int i = 1; i <= MaxPlannerIterations; i++)
             {
-                var resp = await _planner.RunAsync(
-                    BuildRequest(request, request.Prompt, previousContext: i > 1 ? plannerOutput : null), null, ct);
-                responses.Add(resp);
-                AddHistory(session, AgentRole.Planner, resp.Content);
+                string retryCtx  = string.Empty;
+                bool   stageDone = false;
 
-                if (resp.Status != AgentStatus.Completed)
+                for (int i = 1; i <= MaxPlannerIterations && !stageDone; i++)
                 {
-                    await Escalate(request.ChatId, "Planner", i, "Agent javobi xato", ct);
-                    return Fail(request, responses, sw.Elapsed);
-                }
+                    session.CurrentIteration = i;
+                    var resp = await _planner.RunAsync(
+                        Req(request, request.Prompt, i > 1 ? retryCtx : null), null, ct);
+                    responses.Add(resp);
+                    AddHistory(session, AgentRole.Planner, resp.Content);
 
-                var dec = _decision.Decide(AgentRole.Planner, resp.Content, i, MaxPlannerIterations);
-                plannerOutput = resp.Content;
+                    if (resp.Status != AgentStatus.Completed)
+                    {
+                        var action = await EscalateAsync(request.ChatId, "Planner", "Agent javobi xato", session, ct);
+                        if (action == null) return Fail(request, responses, sw.Elapsed);
+                        if (action == "") { plannerOutput = resp.Content; stageDone = true; break; }
+                        retryCtx = action;
+                        i = MaxPlannerIterations; // next will trigger escalation check
+                        continue;
+                    }
 
-                if (dec == Decision.Escalate)
-                {
-                    await Escalate(request.ChatId, "Planner", i, resp.Content, ct);
-                    return Fail(request, responses, sw.Elapsed);
+                    var dec = await _orchestrator.DecideAsync(AgentRole.Planner, resp.Content, session, ct);
+
+                    switch (dec.Decision)
+                    {
+                        case "continue":
+                            plannerOutput = resp.Content;
+                            await Send(request.ChatId, "[Orchestrator] Planner OK → Analyst", ct);
+                            stageDone = true;
+                            break;
+
+                        case "retry_current":
+                            if (i >= MaxPlannerIterations)
+                                goto planner_escalate;
+                            retryCtx = dec.Instructions;
+                            await Send(request.ChatId, $"[Orchestrator] Planner qayta ({i}/{MaxPlannerIterations}): {dec.Reason}", ct);
+                            break;
+
+                        default:
+                            goto planner_escalate;
+                    }
+                    continue;
+
+                    planner_escalate:
+                    {
+                        var action = await EscalateAsync(request.ChatId, "Planner", dec.Reason, session, ct);
+                        if (action == null) return Fail(request, responses, sw.Elapsed);
+                        if (action == "") { plannerOutput = resp.Content; stageDone = true; break; }
+                        retryCtx = action;
+                        // one more try with user instructions
+                        session.CurrentIteration++;
+                        var retryResp = await _planner.RunAsync(Req(request, request.Prompt, action), null, ct);
+                        responses.Add(retryResp);
+                        AddHistory(session, AgentRole.Planner, retryResp.Content);
+                        plannerOutput = retryResp.Status == AgentStatus.Completed ? retryResp.Content : resp.Content;
+                        stageDone = true;
+                    }
                 }
-                if (dec == Decision.Continue) break;
+                if (!stageDone) return Fail(request, responses, sw.Elapsed);
             }
             await Send(request.ChatId, "📋 Planner: qadamlar tayyor", ct);
 
             // ===== BOSQICH 2: ANALYST =====
             string analystOutput = string.Empty;
-            for (int i = 1; i <= MaxAnalystIterations; i++)
             {
-                var prompt = $"{request.Prompt}\n\nPlanner qadamlari:\n{plannerOutput}";
-                var resp   = await _analyst.RunAsync(
-                    BuildRequest(request, prompt, previousContext: i > 1 ? analystOutput : null), null, ct);
-                responses.Add(resp);
-                AddHistory(session, AgentRole.Analyst, resp.Content);
+                string retryCtx  = string.Empty;
+                bool   stageDone = false;
 
-                if (resp.Status != AgentStatus.Completed)
+                for (int i = 1; i <= MaxAnalystIterations && !stageDone; i++)
                 {
-                    await Escalate(request.ChatId, "Analyst", i, "Agent javobi xato", ct);
-                    return Fail(request, responses, sw.Elapsed);
-                }
+                    session.CurrentIteration = i;
+                    var prompt = $"{request.Prompt}\n\nPlanner qadamlari:\n{plannerOutput}";
+                    var resp   = await _analyst.RunAsync(
+                        Req(request, prompt, i > 1 ? retryCtx : null), null, ct);
+                    responses.Add(resp);
+                    AddHistory(session, AgentRole.Analyst, resp.Content);
 
-                var dec = _decision.Decide(AgentRole.Analyst, resp.Content, i, MaxAnalystIterations);
-                analystOutput = resp.Content;
+                    if (resp.Status != AgentStatus.Completed)
+                    {
+                        var action = await EscalateAsync(request.ChatId, "Analyst", "Agent javobi xato", session, ct);
+                        if (action == null) return Fail(request, responses, sw.Elapsed);
+                        if (action == "") { analystOutput = resp.Content; stageDone = true; break; }
+                        retryCtx = action;
+                        i = MaxAnalystIterations;
+                        continue;
+                    }
 
-                if (dec == Decision.Escalate)
-                {
-                    await Escalate(request.ChatId, "Analyst", i, resp.Content, ct);
-                    return Fail(request, responses, sw.Elapsed);
+                    var dec = await _orchestrator.DecideAsync(AgentRole.Analyst, resp.Content, session, ct);
+
+                    switch (dec.Decision)
+                    {
+                        case "continue":
+                            analystOutput = resp.Content;
+                            await Send(request.ChatId, "[Orchestrator] Analyst OK → Architect", ct);
+                            stageDone = true;
+                            break;
+
+                        case "retry_current":
+                            if (i >= MaxAnalystIterations)
+                                goto analyst_escalate;
+                            retryCtx = dec.Instructions;
+                            await Send(request.ChatId, $"[Orchestrator] Analyst qayta ({i}/{MaxAnalystIterations}): {dec.Reason}", ct);
+                            break;
+
+                        case "retry_previous":
+                            await Send(request.ChatId, $"[Orchestrator] Planner ga qaytildi: {dec.Reason}", ct);
+                            goto analyst_escalate;
+
+                        default:
+                            goto analyst_escalate;
+                    }
+                    continue;
+
+                    analyst_escalate:
+                    {
+                        var action = await EscalateAsync(request.ChatId, "Analyst", dec.Reason, session, ct);
+                        if (action == null) return Fail(request, responses, sw.Elapsed);
+                        if (action == "") { analystOutput = resp.Content; stageDone = true; break; }
+                        session.CurrentIteration++;
+                        var retryResp = await _analyst.RunAsync(Req(request, $"{request.Prompt}\n\nPlanner:\n{plannerOutput}", action), null, ct);
+                        responses.Add(retryResp);
+                        AddHistory(session, AgentRole.Analyst, retryResp.Content);
+                        analystOutput = retryResp.Status == AgentStatus.Completed ? retryResp.Content : resp.Content;
+                        stageDone = true;
+                    }
                 }
-                if (dec == Decision.Continue) break;
+                if (!stageDone) return Fail(request, responses, sw.Elapsed);
             }
             session.Requirements = analystOutput;
             _sessionStore.UpdateSession(session);
             await Send(request.ChatId, "📝 Analyst: talablar tayyor", ct);
 
             // ===== BOSQICH 3: ARCHITECT =====
-            for (int i = 1; i <= MaxArchitectIterations; i++)
+            for (int i = 1; i <= MaxArchitectIterations + 1; i++) // +1 for potential user retry
             {
+                session.CurrentIteration = i;
                 var prompt = $"{request.Prompt}\n\nTalablar:\n{analystOutput}";
                 var resp   = await _architect.RunAsync(
-                    BuildRequest(request, prompt, previousContext: i > 1 ? session.ArchitectPlanJson : null), null, ct);
+                    Req(request, prompt, i > 1 ? session.ArchitectPlanJson : null), null, ct);
                 responses.Add(resp);
                 AddHistory(session, AgentRole.Architect, resp.Content);
 
                 if (resp.Status != AgentStatus.Completed)
                 {
-                    await Escalate(request.ChatId, "Architect", i, "Agent javobi xato", ct);
-                    return Fail(request, responses, sw.Elapsed);
+                    var action = await EscalateAsync(request.ChatId, "Architect", "Agent javobi xato", session, ct);
+                    if (action == null) return Fail(request, responses, sw.Elapsed);
+                    if (action == "") break; // skip with whatever plan we have
+                    session.ArchitectPlanJson += $"\n\nFoydalanuvchi ko'rsatmasi: {action}";
+                    continue;
                 }
 
                 plan = ParseArchitectPlan(resp.Content);
                 if (plan == null)
                 {
-                    if (i == MaxArchitectIterations)
+                    session.ArchitectPlanJson = resp.Content + "\n\nXATO: JSON format noto'g'ri, qayta yoz.";
+                    if (i >= MaxArchitectIterations)
                     {
-                        await Escalate(request.ChatId, "Architect", i, "JSON parse xatosi", ct);
-                        return Fail(request, responses, sw.Elapsed);
+                        var action = await EscalateAsync(request.ChatId, "Architect", "JSON parse xatosi", session, ct);
+                        if (action == null) return Fail(request, responses, sw.Elapsed);
+                        if (action == "") break;
+                        session.ArchitectPlanJson += $"\nFoydalanuvchi: {action}";
                     }
-                    session.ArchitectPlanJson = resp.Content + "\n\nXATO: JSON parse xatosi. To'g'ri JSON format bilan qayta yoz.";
+                    await Send(request.ChatId, $"[Orchestrator] Architect qayta ({i}/{MaxArchitectIterations}): JSON parse xatosi", ct);
                     continue;
                 }
 
                 session.ArchitectPlanJson = resp.Content;
                 _sessionStore.UpdateSession(session);
-                break;
+
+                var dec = await _orchestrator.DecideAsync(AgentRole.Architect, resp.Content, session, ct);
+
+                switch (dec.Decision)
+                {
+                    case "continue":
+                        await Send(request.ChatId, "[Orchestrator] Architect OK → Developer", ct);
+                        goto architect_done;
+
+                    case "retry_current":
+                        if (i >= MaxArchitectIterations)
+                        {
+                            var action = await EscalateAsync(request.ChatId, "Architect", dec.Reason, session, ct);
+                            if (action == null) return Fail(request, responses, sw.Elapsed);
+                            if (action == "") goto architect_done;
+                            session.ArchitectPlanJson += $"\nFoydalanuvchi: {action}";
+                        }
+                        else
+                        {
+                            session.ArchitectPlanJson += $"\n\nTuzatish: {dec.Instructions}";
+                            await Send(request.ChatId, $"[Orchestrator] Architect qayta ({i}/{MaxArchitectIterations}): {dec.Reason}", ct);
+                        }
+                        break;
+
+                    case "retry_previous":
+                        await Send(request.ChatId, $"[Orchestrator] Analyst ga qaytildi: {dec.Reason}", ct);
+                        var esc = await EscalateAsync(request.ChatId, "Architect", dec.Reason, session, ct);
+                        if (esc == null) return Fail(request, responses, sw.Elapsed);
+                        if (esc == "") goto architect_done;
+                        session.ArchitectPlanJson += $"\nFoydalanuvchi: {esc}";
+                        break;
+
+                    default:
+                        var escDef = await EscalateAsync(request.ChatId, "Architect", dec.Reason, session, ct);
+                        if (escDef == null) return Fail(request, responses, sw.Elapsed);
+                        if (escDef == "") goto architect_done;
+                        session.ArchitectPlanJson += $"\nFoydalanuvchi: {escDef}";
+                        break;
+                }
             }
+            architect_done:
 
             if (plan == null) return Fail(request, responses, sw.Elapsed);
             await Send(request.ChatId, $"🏗️ Architect: {plan.Files.Count} fayl", ct);
@@ -196,113 +323,33 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
             await _projectBuilder.BuildProjectAsync(plan, workDir, ct);
 
             // ===== BOSQICH 4: DEVELOPER LOOP =====
-            var devSuccess = false;
-            for (int iter = 1; iter <= MaxDeveloperIterations; iter++)
             {
-                await Send(request.ChatId, $"🔨 Developer ({iter}/{MaxDeveloperIterations})...", ct);
+                string retryCtx  = string.Empty;
+                bool   stageDone = false;
 
-                foreach (var file in plan.Files)
+                for (int iter = 1; iter <= MaxDeveloperIterations && !stageDone; iter++)
                 {
-                    var agent = GetAgentForRole(file.AssignTo) ?? _backend;
-                    var filePrompt = BuildFilePrompt(request.Prompt, analystOutput, file, session.BuildErrors);
-                    var projectCtx = BuildProjectContext(plan);
+                    session.CurrentIteration = iter;
+                    await Send(request.ChatId, $"🔨 Developer ({iter}/{MaxDeveloperIterations})...", ct);
 
-                    var fileResp = await agent.RunAsync(
-                        BuildRequest(request, filePrompt,
-                            filePath: file.Path,
-                            ns: ExtractNamespace(file.Path),
-                            projectContext: projectCtx),
-                        BuildWrittenFilesContext(session),
-                        ct);
-                    responses.Add(fileResp);
-                    AddHistory(session, agent.Role, fileResp.Content);
-
-                    if (fileResp.Status == AgentStatus.Completed)
-                    {
-                        var code = _codeWriter.ExtractCode(fileResp.Content);
-                        if (!string.IsNullOrWhiteSpace(code))
-                        {
-                            await _codeWriter.WriteFileAsync(workDir!, file.Path, code, ct);
-                            session.Files[file.Path] = code;
-                        }
-                    }
-                }
-                _sessionStore.UpdateSession(session);
-
-                var build = await _codeWriter.BuildAsync(workDir!, plan.SolutionFile, ct);
-                session.BuildErrors = build.Errors;
-                _sessionStore.UpdateSession(session);
-
-                if (build.Success)
-                {
-                    devSuccess = true;
-                    break;
-                }
-
-                _logger.LogWarning("Build xatosi iter={Iter}: {Errors}", iter, string.Join(", ", build.Errors.Take(3)));
-
-                if (iter == MaxDeveloperIterations)
-                {
-                    await Escalate(request.ChatId, "Developer", iter,
-                        string.Join("\n", build.Errors.Take(5)), ct);
-                    return Fail(request, responses, sw.Elapsed);
-                }
-            }
-
-            if (!devSuccess) return Fail(request, responses, sw.Elapsed);
-
-            // ===== BOSQICH 5: REVIEWER LOOP =====
-            for (int iter = 1; iter <= MaxReviewerIterations; iter++)
-            {
-                await Send(request.ChatId, $"👀 Reviewer ({iter}/{MaxReviewerIterations})...", ct);
-
-                var allCode  = BuildAllFilesContext(session);
-                var revResp  = await _reviewer.RunAsync(
-                    BuildRequest(request, request.Prompt), allCode, ct);
-                responses.Add(revResp);
-                AddHistory(session, AgentRole.Reviewer, revResp.Content);
-
-                if (revResp.Status != AgentStatus.Completed)
-                {
-                    if (iter == MaxReviewerIterations)
-                        await Escalate(request.ChatId, "Reviewer", iter, "Agent javobi xato", ct);
-                    continue;
-                }
-
-                var dec = _decision.Decide(AgentRole.Reviewer, revResp.Content, iter, MaxReviewerIterations);
-
-                if (dec == Decision.Continue) break;
-
-                if (dec == Decision.RetryPreviousAgent)
-                {
-                    await Escalate(request.ChatId, "Reviewer", iter, "Arxitektura qayta ko'rib chiqish kerak", ct);
-                    break;
-                }
-
-                if (dec == Decision.Escalate)
-                {
-                    await Escalate(request.ChatId, "Reviewer", iter, revResp.Content, ct);
-                    break;
-                }
-
-                // RetryCurrentAgent → fix via Developer
-                if (iter < MaxReviewerIterations)
-                {
-                    await Send(request.ChatId, $"🔨 Developer tuzatmoqda...", ct);
+                    AgentResponse? lastResp = null;
                     foreach (var file in plan.Files)
                     {
-                        var agent = GetAgentForRole(file.AssignTo) ?? _backend;
-                        var fixPrompt = $"Reviewer topgan muammolarni tuzat:\n{revResp.Content}\n\nFayl: {file.Path}\n{file.Description}";
-                        var fixResp   = await agent.RunAsync(
-                            BuildRequest(request, fixPrompt, filePath: file.Path,
-                                projectContext: BuildProjectContext(plan)),
-                            allCode, ct);
-                        responses.Add(fixResp);
-                        AddHistory(session, agent.Role, fixResp.Content);
+                        var agent      = GetAgentForRole(file.AssignTo) ?? _backend;
+                        var filePrompt = BuildFilePrompt(request.Prompt, analystOutput, file, session.BuildErrors, retryCtx);
+                        var fileResp   = await agent.RunAsync(
+                            Req(request, filePrompt, null,
+                                filePath: file.Path,
+                                ns:       ExtractNamespace(file.Path),
+                                projCtx:  BuildProjectContext(plan)),
+                            BuildWrittenFilesContext(session), ct);
+                        responses.Add(fileResp);
+                        AddHistory(session, agent.Role, fileResp.Content);
+                        lastResp = fileResp;
 
-                        if (fixResp.Status == AgentStatus.Completed)
+                        if (fileResp.Status == AgentStatus.Completed)
                         {
-                            var code = _codeWriter.ExtractCode(fixResp.Content);
+                            var code = _codeWriter.ExtractCode(fileResp.Content);
                             if (!string.IsNullOrWhiteSpace(code))
                             {
                                 await _codeWriter.WriteFileAsync(workDir!, file.Path, code, ct);
@@ -311,63 +358,182 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
                         }
                     }
                     _sessionStore.UpdateSession(session);
+
+                    var build = await _codeWriter.BuildAsync(workDir!, plan.SolutionFile, ct);
+                    session.BuildErrors = build.Errors;
+                    _sessionStore.UpdateSession(session);
+
+                    var dec = await _orchestrator.DecideAsync(
+                        AgentRole.Backend,
+                        lastResp?.Content ?? (build.Success ? "Build OK" : string.Join("\n", build.Errors.Take(5))),
+                        session, ct);
+
+                    switch (dec.Decision)
+                    {
+                        case "continue":
+                            await Send(request.ChatId, "[Orchestrator] Developer OK → Reviewer", ct);
+                            stageDone = true;
+                            break;
+
+                        case "retry_current":
+                            if (iter >= MaxDeveloperIterations)
+                            {
+                                var action = await EscalateAsync(request.ChatId, "Developer", dec.Reason, session, ct);
+                                if (action == null) return Fail(request, responses, sw.Elapsed);
+                                if (action == "") { stageDone = true; break; }
+                                retryCtx = action;
+                            }
+                            else
+                            {
+                                retryCtx = dec.Instructions;
+                                await Send(request.ChatId, $"[Orchestrator] Developer qayta ({iter}/{MaxDeveloperIterations}): {dec.Reason}", ct);
+                            }
+                            break;
+
+                        case "retry_previous":
+                            await Send(request.ChatId, $"[Orchestrator] Architect ga qaytildi: {dec.Reason}", ct);
+                            var escDev = await EscalateAsync(request.ChatId, "Developer", dec.Reason, session, ct);
+                            if (escDev == null) return Fail(request, responses, sw.Elapsed);
+                            if (escDev == "") { stageDone = true; break; }
+                            retryCtx = escDev;
+                            break;
+
+                        default:
+                            var escDefDev = await EscalateAsync(request.ChatId, "Developer", dec.Reason, session, ct);
+                            if (escDefDev == null) return Fail(request, responses, sw.Elapsed);
+                            if (escDefDev == "") { stageDone = true; break; }
+                            retryCtx = escDefDev;
+                            break;
+                    }
+                }
+                if (!stageDone) return Fail(request, responses, sw.Elapsed);
+            }
+
+            // ===== BOSQICH 5: REVIEWER LOOP =====
+            {
+                bool stageDone = false;
+                for (int iter = 1; iter <= MaxReviewerIterations && !stageDone; iter++)
+                {
+                    session.CurrentIteration = iter;
+                    await Send(request.ChatId, $"👀 Reviewer ({iter}/{MaxReviewerIterations})...", ct);
+
+                    var allCode = BuildAllFilesContext(session);
+                    var resp    = await _reviewer.RunAsync(Req(request, request.Prompt), allCode, ct);
+                    responses.Add(resp);
+                    AddHistory(session, AgentRole.Reviewer, resp.Content);
+
+                    if (resp.Status != AgentStatus.Completed)
+                    {
+                        if (iter < MaxReviewerIterations) continue;
+                        var action = await EscalateAsync(request.ChatId, "Reviewer", "Agent javobi xato", session, ct);
+                        if (action == null) return Fail(request, responses, sw.Elapsed);
+                        stageDone = true;
+                        break;
+                    }
+
+                    var dec = await _orchestrator.DecideAsync(AgentRole.Reviewer, resp.Content, session, ct);
+
+                    switch (dec.Decision)
+                    {
+                        case "continue":
+                            await Send(request.ChatId, "[Orchestrator] Reviewer OK → QA", ct);
+                            stageDone = true;
+                            break;
+
+                        case "retry_current":
+                            if (iter >= MaxReviewerIterations)
+                            {
+                                var action = await EscalateAsync(request.ChatId, "Reviewer", dec.Reason, session, ct);
+                                if (action == null) return Fail(request, responses, sw.Elapsed);
+                                if (action == "") { stageDone = true; break; }
+                                await FixFilesAsync(action, request, plan, session, responses, workDir!, ct);
+                            }
+                            else
+                            {
+                                await Send(request.ChatId, $"[Orchestrator] Reviewer qayta ({iter}/{MaxReviewerIterations}): {dec.Reason}", ct);
+                                await FixFilesAsync(dec.Instructions, request, plan, session, responses, workDir!, ct);
+                            }
+                            break;
+
+                        case "retry_previous":
+                            await Send(request.ChatId, $"[Orchestrator] Developer ga qaytildi: {dec.Reason}", ct);
+                            var escRev = await EscalateAsync(request.ChatId, "Reviewer", dec.Reason, session, ct);
+                            if (escRev == null) return Fail(request, responses, sw.Elapsed);
+                            if (escRev == "") { stageDone = true; break; }
+                            await FixFilesAsync(escRev, request, plan, session, responses, workDir!, ct);
+                            break;
+
+                        default:
+                            var escDefRev = await EscalateAsync(request.ChatId, "Reviewer", dec.Reason, session, ct);
+                            if (escDefRev == null) return Fail(request, responses, sw.Elapsed);
+                            if (escDefRev == "") { stageDone = true; break; }
+                            await FixFilesAsync(escDefRev, request, plan, session, responses, workDir!, ct);
+                            break;
+                    }
                 }
             }
 
             // ===== BOSQICH 6: QA LOOP =====
-            for (int iter = 1; iter <= MaxQaIterations; iter++)
             {
-                await Send(request.ChatId, $"🧪 QA ({iter}/{MaxQaIterations})...", ct);
-
-                var allCode = BuildAllFilesContext(session);
-                var qaResp  = await _qa.RunAsync(
-                    BuildRequest(request, request.Prompt), allCode, ct);
-                responses.Add(qaResp);
-                AddHistory(session, AgentRole.QA, qaResp.Content);
-
-                if (qaResp.Status != AgentStatus.Completed)
+                bool stageDone = false;
+                for (int iter = 1; iter <= MaxQaIterations && !stageDone; iter++)
                 {
-                    if (iter == MaxQaIterations)
-                        await Escalate(request.ChatId, "QA", iter, "Agent javobi xato", ct);
-                    continue;
-                }
+                    session.CurrentIteration = iter;
+                    await Send(request.ChatId, $"🧪 QA ({iter}/{MaxQaIterations})...", ct);
 
-                var dec = _decision.Decide(AgentRole.QA, qaResp.Content, iter, MaxQaIterations);
+                    var allCode = BuildAllFilesContext(session);
+                    var resp    = await _qa.RunAsync(Req(request, request.Prompt), allCode, ct);
+                    responses.Add(resp);
+                    AddHistory(session, AgentRole.QA, resp.Content);
 
-                if (dec == Decision.Continue) break;
-
-                if (dec == Decision.Escalate)
-                {
-                    await Escalate(request.ChatId, "QA", iter, qaResp.Content, ct);
-                    break;
-                }
-
-                // RetryCurrentAgent → fix via Developer
-                if (iter < MaxQaIterations)
-                {
-                    await Send(request.ChatId, $"🔨 Developer QA baglarini tuzatmoqda...", ct);
-                    foreach (var file in plan.Files)
+                    if (resp.Status != AgentStatus.Completed)
                     {
-                        var agent = GetAgentForRole(file.AssignTo) ?? _backend;
-                        var fixPrompt = $"QA topgan baglarni tuzat:\n{qaResp.Content}\n\nFayl: {file.Path}\n{file.Description}";
-                        var fixResp   = await agent.RunAsync(
-                            BuildRequest(request, fixPrompt, filePath: file.Path,
-                                projectContext: BuildProjectContext(plan)),
-                            allCode, ct);
-                        responses.Add(fixResp);
-                        AddHistory(session, agent.Role, fixResp.Content);
-
-                        if (fixResp.Status == AgentStatus.Completed)
-                        {
-                            var code = _codeWriter.ExtractCode(fixResp.Content);
-                            if (!string.IsNullOrWhiteSpace(code))
-                            {
-                                await _codeWriter.WriteFileAsync(workDir!, file.Path, code, ct);
-                                session.Files[file.Path] = code;
-                            }
-                        }
+                        if (iter < MaxQaIterations) continue;
+                        var action = await EscalateAsync(request.ChatId, "QA", "Agent javobi xato", session, ct);
+                        if (action == null) return Fail(request, responses, sw.Elapsed);
+                        stageDone = true;
+                        break;
                     }
-                    _sessionStore.UpdateSession(session);
+
+                    var dec = await _orchestrator.DecideAsync(AgentRole.QA, resp.Content, session, ct);
+
+                    switch (dec.Decision)
+                    {
+                        case "continue":
+                            await Send(request.ChatId, "[Orchestrator] QA OK → Git", ct);
+                            stageDone = true;
+                            break;
+
+                        case "retry_current":
+                            if (iter >= MaxQaIterations)
+                            {
+                                var action = await EscalateAsync(request.ChatId, "QA", dec.Reason, session, ct);
+                                if (action == null) return Fail(request, responses, sw.Elapsed);
+                                if (action == "") { stageDone = true; break; }
+                                await FixFilesAsync(action, request, plan, session, responses, workDir!, ct);
+                            }
+                            else
+                            {
+                                await Send(request.ChatId, $"[Orchestrator] QA qayta ({iter}/{MaxQaIterations}): {dec.Reason}", ct);
+                                await FixFilesAsync(dec.Instructions, request, plan, session, responses, workDir!, ct);
+                            }
+                            break;
+
+                        case "retry_previous":
+                            await Send(request.ChatId, $"[Orchestrator] Developer ga qaytildi: {dec.Reason}", ct);
+                            var escQa = await EscalateAsync(request.ChatId, "QA", dec.Reason, session, ct);
+                            if (escQa == null) return Fail(request, responses, sw.Elapsed);
+                            if (escQa == "") { stageDone = true; break; }
+                            await FixFilesAsync(escQa, request, plan, session, responses, workDir!, ct);
+                            break;
+
+                        default:
+                            var escDefQa = await EscalateAsync(request.ChatId, "QA", dec.Reason, session, ct);
+                            if (escDefQa == null) return Fail(request, responses, sw.Elapsed);
+                            if (escDefQa == "") { stageDone = true; break; }
+                            await FixFilesAsync(escDefQa, request, plan, session, responses, workDir!, ct);
+                            break;
+                    }
                 }
             }
 
@@ -404,38 +570,69 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
         }
     }
 
-    // ===== Helpers =====
+    // ===== Escalation =====
 
-    private Task Send(long chatId, string text, CancellationToken ct) =>
-        _sender.SendTextAsync(chatId, text, useMarkdown: false, ct);
-
-    private async Task Escalate(long chatId, string role, int iteration, string description, CancellationToken ct)
+    /// <summary>
+    /// Foydalanuvchidan javob kutadi.
+    /// Returns: null = stop, "" = skip, text = instructions for retry
+    /// </summary>
+    private async Task<string?> EscalateAsync(
+        long chatId, string roleName, string reason, ProjectSession session, CancellationToken ct)
     {
-        var trimmed = description.Length > 200 ? description[..200] : description;
-        await Send(chatId,
-            $"⚠️ Eskalatsiya: {role} {iteration} urinishdan keyin hal qila olmadi.\nMuammo: {trimmed}\nQo'lda hal qilish kerak.",
-            ct);
-        _logger.LogWarning("Eskalatsiya: {Role} iter={Iter}", role, iteration);
+        var msg =
+            $"⚠️ Ferma yordam kerak!\n\n" +
+            $"Muammo: {reason}\n" +
+            $"Agent: {roleName}\n" +
+            $"Kontekst: {session.Files.Count} fayl yozilgan, build: {(session.BuildErrors.Any() ? "XATO" : "OK")}\n\n" +
+            $"Nima qilishni xohlaysiz?\n" +
+            $"/continue — yangi ko'rsatma bering\n" +
+            $"/skip — bu qadamni o'tkazib yuboring\n" +
+            $"/stop — vazifani to'xtatish";
+
+        await Send(chatId, msg, ct);
+        _logger.LogWarning("Eskalatsiya: {Role} — {Reason}", roleName, reason);
+
+        var escalation = new EscalationSession
+        {
+            SessionId  = session.SessionId,
+            ChatId     = chatId,
+            FailedRole = AgentRole.Orchestrator,
+            Problem    = reason,
+            Context    = $"{session.Files.Count} fayl, build: {(session.BuildErrors.Any() ? "XATO" : "OK")}"
+        };
+        _escalationStore.AddEscalation(escalation);
+
+        var userResponse = await escalation.Tcs.Task;
+        _escalationStore.RemoveEscalation(chatId);
+
+        return userResponse == IEscalationStore.StopToken ? null  :
+               userResponse == IEscalationStore.SkipToken ? ""    :
+               userResponse;
     }
+
+    // ===== Private Helpers =====
+
+    private Task Send(long chatId, string text, CancellationToken ct = default) =>
+        _sender.SendTextAsync(chatId, text, useMarkdown: false, ct);
 
     private static void AddHistory(ProjectSession session, AgentRole role, string content) =>
         session.History.Add(new AgentMessage { Role = role, Content = content });
 
-    private static AgentRequest BuildRequest(
+    private static AgentRequest Req(
         AgentRequest original,
         string prompt,
-        string? previousContext = null,
+        string? context  = null,
         string? filePath = null,
-        string? ns = null,
-        string? projectContext = null) =>
+        string? ns       = null,
+        string? projCtx  = null) =>
         new()
         {
             ChatId         = original.ChatId,
             Prompt         = prompt,
-            Context        = previousContext,
+            Context        = context,
             FilePath       = filePath,
             Namespace      = ns,
-            ProjectContext = projectContext
+            ProjectContext = projCtx
         };
 
     private AgentBase? GetAgentForRole(string assignTo)
@@ -453,6 +650,35 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
             _                 => _backend
         };
         return agent is { IsEnabled: true } ? agent : null;
+    }
+
+    private async Task FixFilesAsync(
+        string instructions, AgentRequest request, ArchitectPlan plan,
+        ProjectSession session, List<AgentResponse> responses, string workDir, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(instructions)) return;
+        var allCode = BuildAllFilesContext(session);
+        foreach (var file in plan.Files)
+        {
+            var agent     = GetAgentForRole(file.AssignTo) ?? _backend;
+            var fixPrompt = $"Muammolarni tuzat:\n{instructions}\n\nFayl: {file.Path}\n{file.Description}";
+            var fixResp   = await agent.RunAsync(
+                Req(request, fixPrompt, filePath: file.Path, projCtx: BuildProjectContext(plan)),
+                allCode, ct);
+            responses.Add(fixResp);
+            AddHistory(session, agent.Role, fixResp.Content);
+
+            if (fixResp.Status == AgentStatus.Completed)
+            {
+                var code = _codeWriter.ExtractCode(fixResp.Content);
+                if (!string.IsNullOrWhiteSpace(code))
+                {
+                    await _codeWriter.WriteFileAsync(workDir, file.Path, code, ct);
+                    session.Files[file.Path] = code;
+                }
+            }
+        }
+        _sessionStore.UpdateSession(session);
     }
 
     private static ArchitectPlan? ParseArchitectPlan(string json)
@@ -473,39 +699,30 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
         catch { return null; }
     }
 
-    private static AgentRole ParseRole(string role) => role.ToLower() switch
-    {
-        "backend"         => AgentRole.Backend,
-        "frontend"        => AgentRole.Frontend,
-        "devops"          => AgentRole.DevOps,
-        "qa"              => AgentRole.QA,
-        "reviewer"        => AgentRole.Reviewer,
-        "security"        => AgentRole.Security,
-        "databaseadmin"   => AgentRole.DatabaseAdmin,
-        "businessanalyst" => AgentRole.BusinessAnalyst,
-        _                 => AgentRole.Backend
-    };
-
     private static string BuildFilePrompt(
-        string originalPrompt,
-        string requirements,
-        ArchitectFile file,
-        List<string> buildErrors)
+        string originalPrompt, string requirements, ArchitectFile file,
+        List<string> buildErrors, string retryInstructions)
     {
         var sb = new StringBuilder();
         sb.AppendLine(originalPrompt);
         sb.AppendLine();
-        sb.AppendLine($"## Yozilishi kerak bo'lgan fayl");
-        sb.AppendLine($"Path: {file.Path}");
+        sb.AppendLine($"## Fayl: {file.Path}");
         sb.AppendLine($"Tavsif: {file.Description}");
         sb.AppendLine();
         sb.AppendLine("## Texnik talablar");
         sb.AppendLine(requirements);
 
+        if (!string.IsNullOrWhiteSpace(retryInstructions))
+        {
+            sb.AppendLine();
+            sb.AppendLine("## Orchestrator ko'rsatmasi");
+            sb.AppendLine(retryInstructions);
+        }
+
         if (buildErrors.Count > 0)
         {
             sb.AppendLine();
-            sb.AppendLine("## Build xatolari (tuzatish kerak)");
+            sb.AppendLine("## Build xatolari");
             foreach (var err in buildErrors.Take(10))
                 sb.AppendLine($"- {err}");
         }
@@ -522,14 +739,13 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
             sb.AppendLine($"  - {p.Name} ({p.Type})");
         sb.AppendLine("Files:");
         foreach (var f in plan.Files)
-            sb.AppendLine($"  - {f.Path} [{f.AssignTo}] — {f.Description}");
+            sb.AppendLine($"  - {f.Path} [{f.AssignTo}]");
         return sb.ToString();
     }
 
     private static string BuildWrittenFilesContext(ProjectSession session)
     {
         if (session.Files.Count == 0) return string.Empty;
-
         var sb = new StringBuilder();
         sb.AppendLine("## Allaqachon yozilgan fayllar");
         foreach (var (path, code) in session.Files)
@@ -556,8 +772,8 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
 
     private static string ExtractNamespace(string filePath)
     {
-        var parts    = filePath.Replace("\\", "/").Split('/');
-        var nsParts  = new List<string>();
+        var parts   = filePath.Replace("\\", "/").Split('/');
+        var nsParts = new List<string>();
         for (int i = 0; i < parts.Length - 1; i++)
         {
             if (parts[i] is "src" or "tests") continue;
@@ -583,7 +799,7 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
         try
         {
             var repoName = await _projectRepoService.CreateProjectRepoAsync(session.OriginalTask, ct);
-            session.RepoName  = repoName;
+            session.RepoName   = repoName;
             session.BranchName = $"task/{session.SessionId:N}";
             await _gitHubService.CreateBranchAsync(repoName, session.BranchName, ct);
             _sessionStore.UpdateSession(session);
@@ -617,8 +833,7 @@ public sealed class OrchestratorPipelineRunner : IAgentPipelineRunner
             var pr = await _gitHubService.CreatePullRequestAsync(
                 session.RepoName, session.BranchName,
                 $"Task: {originalTask}",
-                $"🤖 Generated by ClaudeFarm\n\nTask: {originalTask}",
-                ct);
+                $"🤖 Generated by ClaudeFarm\n\nTask: {originalTask}", ct);
             session.PullRequestNumber = pr.Number;
             session.PullRequestUrl    = pr.HtmlUrl;
             _sessionStore.UpdateSession(session);

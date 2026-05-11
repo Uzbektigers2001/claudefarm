@@ -72,6 +72,9 @@ public sealed class CommandRouter
             };
         }
 
+        // Eskalatsiya buyruqlari — UpdateHandler to'g'ridan-to'g'ri qayta ishlaydi
+        // /continue, /skip, /stop — bu yerda null qaytaradi (UpdateHandler o'zi hal qiladi)
+
         return null;
     }
 

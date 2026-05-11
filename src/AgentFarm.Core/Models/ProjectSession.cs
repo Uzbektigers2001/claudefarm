@@ -18,6 +18,7 @@ public class ProjectSession
     public string ArchitectPlanJson { get; set; } = string.Empty;
     public string Requirements { get; set; } = string.Empty;
     public List<string> BuildErrors { get; set; } = new();
+    public int CurrentIteration { get; set; } = 0;
 
     // Git integration
     public string? RepoName { get; set; }
