@@ -18,11 +18,17 @@ builder.Services.AddSingleton<ITelegramMessageSender, TelegramMessageSender>();
 builder.Services.AddSingleton<CommandRouter>();
 builder.Services.AddSingleton<UpdateHandler>();
 
-// --- Anthropic Claude API ---
+// --- Claude / OmniRoute API ---
 builder.Services.Configure<AnthropicOptions>(
     builder.Configuration.GetSection("Anthropic"));
 
-builder.Services.AddHttpClient<ClaudeApiClient>();
+// HttpClient BaseUrl ni OmniRoute dan olamiz
+builder.Services.AddHttpClient<ClaudeApiClient>((sp, client) =>
+{
+    var opts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AnthropicOptions>>().Value;
+    client.BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + "/");
+    client.Timeout     = TimeSpan.FromSeconds(120);
+});
 
 // --- Agentlar ---
 builder.Services.AddSingleton<DeveloperAgent>();
@@ -33,12 +39,21 @@ builder.Services.AddSingleton<ReviewerAgent>();
 builder.Services.AddSingleton<IAgentPipelineRunner, AgentPipelineRunner>();
 
 // --- HTTP + Controllers ---
-builder.Services.AddControllers()
-    .AddNewtonsoftJson(); // Telegram.Bot uchun
+builder.Services.AddControllers();
+
+// --- Health check ---
+builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
 app.MapControllers();
+app.MapHealthChecks("/health");
+
+// --- Startup logi ---
+var config  = app.Services.GetRequiredService<IConfiguration>();
+var baseUrl = config["Anthropic:BaseUrl"] ?? "?";
+var model   = config["Anthropic:Model"]   ?? "?";
+app.Logger.LogInformation("ClaudeFarm ishga tushdi. API={BaseUrl}, Model={Model}", baseUrl, model);
 
 // --- Webhook ni o'rnatamiz ---
 var webhookUrl = builder.Configuration["TelegramBot:WebhookUrl"];
