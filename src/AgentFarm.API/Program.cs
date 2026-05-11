@@ -39,6 +39,13 @@ builder.Services.AddSingleton<IAgentPipelineRunner, AgentPipelineRunner>();
 builder.Services.AddControllers();
 builder.Services.AddHealthChecks();
 
+// --- Telegram Polling (local development) ---
+var webhookUrl = builder.Configuration["TelegramBot:WebhookUrl"];
+if (string.IsNullOrWhiteSpace(webhookUrl))
+{
+    builder.Services.AddHostedService<TelegramPollingService>();
+}
+
 var app = builder.Build();
 
 app.MapControllers();
@@ -48,13 +55,16 @@ var config  = app.Services.GetRequiredService<IConfiguration>();
 app.Logger.LogInformation("ClaudeFarm ishga tushdi. API={Url}, Model={Model}",
     config["Anthropic:BaseUrl"], config["Anthropic:Model"]);
 
-// --- Webhook ---
-var webhookUrl = builder.Configuration["TelegramBot:WebhookUrl"];
+// --- Webhook o'rnatish (agar kerak bo'lsa) ---
 if (!string.IsNullOrWhiteSpace(webhookUrl))
 {
     var bot = app.Services.GetRequiredService<ITelegramBotClient>();
     await bot.SetWebhook(webhookUrl);
     app.Logger.LogInformation("Webhook o'rnatildi: {Url}", webhookUrl);
+}
+else
+{
+    app.Logger.LogInformation("Polling rejimi (local development)");
 }
 
 app.Run();

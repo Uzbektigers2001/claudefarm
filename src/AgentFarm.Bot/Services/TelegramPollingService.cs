@@ -41,6 +41,8 @@ public sealed class TelegramPollingService : BackgroundService
             {
                 try
                 {
+                    _logger.LogDebug("GetUpdates chaqirilmoqda... Offset={Offset}", offset);
+
                     var updates = await _botClient.GetUpdates(
                         offset: offset,
                         timeout: 30,
@@ -48,9 +50,17 @@ public sealed class TelegramPollingService : BackgroundService
                         cancellationToken: stoppingToken
                     );
 
+                    if (updates.Length > 0)
+                    {
+                        _logger.LogInformation("📩 {Count} ta yangi update qabul qilindi", updates.Length);
+                    }
+
                     foreach (var update in updates)
                     {
                         offset = update.Id + 1;
+
+                        _logger.LogInformation("🔄 Update qayta ishlanmoqda: ID={UpdateId}, Type={Type}",
+                            update.Id, update.Type);
 
                         // Har bir updateni background da qayta ishlaymiz
                         _ = Task.Run(async () =>
